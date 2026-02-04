@@ -12,7 +12,7 @@ description = "Schema definition language for config structure and merge strateg
 conflux-core = { path = "../core" }
 serde = { workspace = true }
 serde_json = { workspace = true }
-kdl = { workspace = true }
+toml = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
 

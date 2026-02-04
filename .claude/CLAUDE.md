@@ -57,7 +57,7 @@ CRDT document model, typed operations, per-field merge semantics, causal orderin
 - **Docs:** `crates/core/docs/` — architecture, operations
 
 #### `conflux-schema` (`crates/schema/`)
-Schema definition language (KDL). Declares entity types, field types, merge strategies, and environment overlay rules.
+Schema definition language (TOML). Declares entity types, field types, merge strategies, and environment overlay rules.
 - **Key types:** `Schema`, `EntityDef`, `FieldDef`, `MergeStrategy`
 - **Docs:** `crates/schema/docs/` — schema language, validation
 

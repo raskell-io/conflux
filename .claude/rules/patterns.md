@@ -137,7 +137,7 @@ match result {
 ### Schema Loading
 
 ```rust
-let schema = Schema::from_file("schema.kdl")?;
+let schema = Schema::from_file("schema.toml")?;
 schema.validate()?;  // Check internal consistency
 
 // Use schema for merge
@@ -243,6 +243,8 @@ match schema.output_format {
     Format::Json => serde_json::to_string_pretty(&state)?,
     Format::Toml => toml::to_string(&state)?,
     Format::Kdl => kdl::serialize(&state)?,
+    Format::Xml => quick_xml::se::to_string(&state)?,
+    Format::Tf => hcl::to_string(&state)?,
 }
 ```
 

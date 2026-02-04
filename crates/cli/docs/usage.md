@@ -11,7 +11,7 @@ The `conflux` CLI is the primary human interface. It communicates with the Confl
 Initialize a new Conflux project.
 
 ```bash
-conflux init --schema ./schema.kdl --git-remote git@github.com:org/infra-config.git
+conflux init --schema ./schema.toml --git-remote git@github.com:org/infra-config.git
 ```
 
 ### `conflux import`

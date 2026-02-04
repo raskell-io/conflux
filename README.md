@@ -44,7 +44,7 @@ Early development. Core CRDT model and schema language are being implemented. No
 cargo install conflux
 
 # Initialize a project with a schema
-conflux init --schema ./schema.kdl --git-remote git@github.com:org/infra-config.git
+conflux init --schema ./schema.toml --git-remote git@github.com:org/infra-config.git
 
 # Import existing config files
 conflux import ./configs/ --env production
@@ -95,35 +95,39 @@ conflux milestone --message "post-canary traffic shift"
 | **Causal Ordering** | Hybrid logical clocks for causally consistent, totally ordered operations |
 | **Environment Overlays** | Environments as a data dimension, not git branches. Promote with an operation, not a merge |
 | **Git Milestones** | Periodic snapshots to git with structured commit messages and operation attribution |
-| **Format Agnostic** | Import and export YAML, JSON, TOML, KDL. The CRDT layer is format-independent |
+| **Format Agnostic** | Import and export YAML, JSON, TOML, KDL, XML, TF (HCL). The CRDT layer is format-independent |
 | **Operation Log** | Append-only audit trail of every mutation with actor identity and intent |
 | **Post-Merge Validation** | Schema constraints enforced after every merge — convergence + correctness |
 
 ### Schema Example
 
-Define your config structure and merge rules in KDL:
+Define your config structure and merge rules in TOML:
 
-```kdl
-schema "my-config" version="1.0" {
+```toml
+[schema]
+name = "my-config"
+version = "1.0"
 
-    entity "route" {
-        field "path"     type="string"   merge="lww"  conflict="review"
-        field "weight"   type="int"      merge="max"  range="0,100"
-        field "timeout"  type="duration" merge="lww"
-        field "upstream" type="ref"      target="upstream" merge="lww"
-    }
+[entity.route]
+fields = [
+    { name = "path",     type = "string",   merge = "lww",  conflict = "review" },
+    { name = "weight",   type = "int",      merge = "max",  range = "0,100" },
+    { name = "timeout",  type = "duration", merge = "lww" },
+    { name = "upstream", type = "ref",      target = "upstream", merge = "lww" },
+]
 
-    entity "upstream" {
-        field "targets"      type="list<address>" merge="grow-set"
-        field "health-check" type="bool"          merge="lww"
-    }
+[entity.upstream]
+fields = [
+    { name = "targets",      type = "list<address>", merge = "grow-set" },
+    { name = "health-check", type = "bool",          merge = "lww" },
+]
 
-    environments {
-        base "production"
-        overlay "staging"     inherits="production"
-        overlay "development" inherits="staging"
-    }
-}
+[environments]
+base = "production"
+
+[environments.overlays]
+staging = { inherits = "production" }
+development = { inherits = "staging" }
 ```
 
 ### Merge Strategies
@@ -175,7 +179,7 @@ Each crate has its own `docs/` directory with detailed documentation.
 | Crate | Description |
 |-------|-------------|
 | [`conflux-core`](crates/core/) | CRDT document model, typed operations, per-field merge semantics |
-| [`conflux-schema`](crates/schema/) | Schema definition language (KDL) for config structure and merge rules |
+| [`conflux-schema`](crates/schema/) | Schema definition language (TOML) for config structure and merge rules |
 | [`conflux-store`](crates/store/) | Persistent operation log and snapshot storage (SQLite) |
 | [`conflux-git`](crates/git/) | Git milestone projection and config format serialization |
 | [`conflux-api`](crates/api/) | HTTP and gRPC API server for machine actors |

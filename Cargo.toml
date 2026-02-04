@@ -38,6 +38,8 @@ serde_json = "1.0"
 serde_yaml = "0.9"
 toml = "0.8"
 kdl = "6.0"
+quick-xml = { version = "0.37", features = ["serialize"] }
+hcl-rs = "0.18"
 
 # Logging and tracing
 tracing = "0.1"

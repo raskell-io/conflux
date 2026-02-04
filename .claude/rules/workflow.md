@@ -101,7 +101,7 @@ cargo run --bin conflux -- daemon
 RUST_LOG=debug cargo run --bin conflux -- daemon
 
 # Initialize a project
-cargo run --bin conflux -- init --schema schema.kdl
+cargo run --bin conflux -- init --schema schema.toml
 
 # Import existing configs
 cargo run --bin conflux -- import ./configs/ --env production

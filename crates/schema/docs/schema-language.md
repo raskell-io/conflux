@@ -2,44 +2,51 @@
 
 ## Overview
 
-Conflux schemas define the structure of config documents: what entities exist, what fields they have, how fields merge under concurrent writes, and how environments layer overrides. Schemas are written in KDL.
+Conflux schemas define the structure of config documents: what entities exist, what fields they have, how fields merge under concurrent writes, and how environments layer overrides. Schemas are written in TOML.
 
 ## Example
 
-```kdl
-schema "sentinel-config" version="1.0" {
+```toml
+[schema]
+name = "sentinel-config"
+version = "1.0"
 
-    entity "listener" {
-        field "address"  type="string"   merge="lww"
-        field "protocol" type="string"   merge="lww"   values="http,https"
-        field "timeout"  type="duration" merge="lww"
-    }
+[entity.listener]
+fields = [
+    { name = "address",  type = "string",   merge = "lww" },
+    { name = "protocol", type = "string",   merge = "lww", values = "http,https" },
+    { name = "timeout",  type = "duration", merge = "lww" },
+]
 
-    entity "route" {
-        field "path"     type="string"   merge="lww"  conflict="review"
-        field "weight"   type="int"      merge="max"  range="0,100"
-        field "timeout"  type="duration" merge="lww"
-        field "upstream" type="ref"      target="upstream" merge="lww"
+[entity.route]
+fields = [
+    { name = "path",     type = "string",   merge = "lww", conflict = "review" },
+    { name = "weight",   type = "int",      merge = "max", range = "0,100" },
+    { name = "timeout",  type = "duration", merge = "lww" },
+    { name = "upstream", type = "ref",      target = "upstream", merge = "lww" },
+]
 
-        children "filters" type="filter" merge="set"
-    }
+[entity.route.children]
+filters = { type = "filter", merge = "set" }
 
-    entity "upstream" {
-        field "targets"      type="list<address>" merge="grow-set"
-        field "health-check" type="bool"          merge="lww"
-    }
+[entity.upstream]
+fields = [
+    { name = "targets",      type = "list<address>", merge = "grow-set" },
+    { name = "health-check", type = "bool",          merge = "lww" },
+]
 
-    entity "filter" {
-        field "type"    type="string" merge="lww"
-        field "config"  type="map"    merge="lww"
-    }
+[entity.filter]
+fields = [
+    { name = "type",   type = "string", merge = "lww" },
+    { name = "config", type = "map",    merge = "lww" },
+]
 
-    environments {
-        base "production"
-        overlay "staging"    inherits="production"
-        overlay "development" inherits="staging"
-    }
-}
+[environments]
+base = "production"
+
+[environments.overlays]
+staging = { inherits = "production" }
+development = { inherits = "staging" }
 ```
 
 ## Field Types

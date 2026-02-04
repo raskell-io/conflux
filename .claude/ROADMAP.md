@@ -17,7 +17,7 @@ The minimum viable artifact: a single-node daemon that accepts typed operations,
 - [ ] Implement `Operation` types: SetField, InsertEntity, RemoveEntity, MoveEntity
 - [ ] Implement document merge algorithm (two documents → one)
 - [ ] Property tests: merge commutativity, associativity, idempotency
-- [ ] KDL schema parser in `conflux-schema`
+- [ ] TOML schema parser in `conflux-schema`
 - [ ] Schema validation (field types, constraints, cross-entity refs)
 
 ### Milestone: Storage Layer
@@ -27,7 +27,7 @@ The minimum viable artifact: a single-node daemon that accepts typed operations,
 - [ ] Milestone metadata storage
 
 ### Milestone: Git Projection
-- [ ] Serialize resolved state to YAML, JSON, KDL, TOML in `conflux-git`
+- [ ] Serialize resolved state to YAML, JSON, TOML, KDL, XML, TF in `conflux-git`
 - [ ] Structured milestone commit messages with causal attribution
 - [ ] File layout: per-environment directories
 - [ ] Import from existing config files (`conflux import`)
@@ -90,7 +90,6 @@ The minimum viable artifact: a single-node daemon that accepts typed operations,
 ## Future Considerations
 
 ### Format Support
-- HCL (Terraform) serialization
 - Jsonnet / CUE support
 - Custom serializer plugin API
 

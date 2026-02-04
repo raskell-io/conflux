@@ -63,11 +63,12 @@ The Conflux engine is the source of truth. Git receives milestone snapshots. Thi
 
 Merge behavior is never hardcoded. It's always declared in the schema:
 
-```kdl
-entity "route" {
-    field "weight" type="int" merge="max"       // Schema says max-wins
-    field "path"   type="string" merge="lww"    // Schema says LWW
-}
+```toml
+[entity.route]
+fields = [
+    { name = "weight", type = "int",    merge = "max" },  # Schema says max-wins
+    { name = "path",   type = "string", merge = "lww" },  # Schema says LWW
+]
 ```
 
 **Don't add merge logic that isn't driven by a schema declaration.**

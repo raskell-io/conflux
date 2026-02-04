@@ -8,7 +8,7 @@ Milestones are periodic snapshots of the resolved config state, committed to a g
 
 1. **Trigger** — Manual (`conflux milestone`), scheduled, or policy-based (e.g., after N operations, after a rollout completes)
 2. **Resolve** — Materialize the current document state per environment
-3. **Serialize** — Convert entities back to the original config format (YAML, JSON, KDL, TOML)
+3. **Serialize** — Convert entities back to the original config format (YAML, JSON, TOML, KDL, XML, TF)
 4. **Diff** — Compare against the last milestone to determine what changed
 5. **Commit** — Write files to the git repo and commit with a structured message
 6. **Record** — Store milestone metadata (commit SHA, causal range, timestamp)
@@ -38,6 +38,8 @@ The git projector serializes resolved state back to the original file format. Fo
 | JSON | `.json` | `serde_json` |
 | TOML | `.toml` | `toml` |
 | KDL | `.kdl` | `kdl` |
+| XML | `.xml` | `quick-xml` |
+| TF (HCL) | `.tf` | `hcl-rs` |
 
 ## File Layout
 
