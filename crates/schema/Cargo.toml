@@ -1,0 +1,20 @@
+[package]
+name = "conflux-schema"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Schema definition language for config structure and merge strategies"
+
+[dependencies]
+conflux-core = { path = "../core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+kdl = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }

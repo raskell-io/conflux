@@ -1,0 +1,24 @@
+[package]
+name = "conflux-core"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "CRDT-backed config document model with per-field merge semantics"
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+sha2 = { workspace = true }
+uhlc = { workspace = true }
+bytes = { workspace = true }
+
+[dev-dependencies]
+proptest = { workspace = true }
+insta = { workspace = true }

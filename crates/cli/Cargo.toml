@@ -1,0 +1,29 @@
+[package]
+name = "conflux"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "CLI for Conflux — schema-aware config state coordination"
+
+[[bin]]
+name = "conflux"
+path = "src/main.rs"
+
+[dependencies]
+conflux-core = { path = "../core" }
+conflux-schema = { path = "../schema" }
+conflux-store = { path = "../store" }
+conflux-git = { path = "../git" }
+conflux-api = { path = "../api" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio = { workspace = true }
+clap = { workspace = true }
+chrono = { workspace = true }

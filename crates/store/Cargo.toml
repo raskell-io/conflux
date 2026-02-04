@@ -1,0 +1,23 @@
+[package]
+name = "conflux-store"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Persistent state storage and operation log for Conflux documents"
+
+[dependencies]
+conflux-core = { path = "../core" }
+conflux-schema = { path = "../schema" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+rusqlite = { workspace = true }
+chrono = { workspace = true }
+uuid = { workspace = true }
+
+[dev-dependencies]
+insta = { workspace = true }
