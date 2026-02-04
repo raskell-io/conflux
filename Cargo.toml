@@ -60,7 +60,7 @@ gix = "0.72"
 crdts = "7.3"
 
 # Clocks
-uhlc = "0.9"
+uhlc = { version = "0.9", features = ["serde"] }
 
 # Hashing and identity
 uuid = { version = "1.20", features = ["v4", "serde"] }

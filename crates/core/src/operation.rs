@@ -1,0 +1,155 @@
+//! Operations — typed mutations applied to the document.
+
+use crate::clock::HlcTimestamp;
+use crate::field::FieldValue;
+use crate::identity::{ActorId, EntityId};
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+/// A typed operation submitted by an actor.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Operation {
+    /// Unique operation ID.
+    pub id: Uuid,
+    /// HLC timestamp for causal ordering.
+    pub timestamp: HlcTimestamp,
+    /// The actor who submitted this operation.
+    pub actor: ActorId,
+    /// Optional human-readable intent for auditability.
+    pub intent: Option<String>,
+    /// The kind of mutation.
+    pub kind: OperationKind,
+}
+
+/// The specific mutation an operation performs.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub enum OperationKind {
+    /// Set a field on an entity.
+    SetField {
+        entity_id: EntityId,
+        field: String,
+        value: FieldValue,
+    },
+    /// Insert a new entity into the document.
+    InsertEntity {
+        entity_id: EntityId,
+        entity_type: String,
+        parent_id: Option<EntityId>,
+        /// Fractional position string for ordering among siblings.
+        position: Option<String>,
+    },
+    /// Soft-remove an entity (tombstone).
+    RemoveEntity { entity_id: EntityId },
+    /// Move an entity to a new parent and/or position.
+    MoveEntity {
+        entity_id: EntityId,
+        new_parent_id: EntityId,
+        new_position: String,
+    },
+    /// Set an environment-specific override (deferred for v0.1).
+    SetOverride {
+        entity_id: EntityId,
+        field: String,
+        environment: String,
+        value: FieldValue,
+    },
+}
+
+impl Operation {
+    /// Creates a SetField operation.
+    pub fn set_field(
+        entity_id: impl Into<EntityId>,
+        field: impl Into<String>,
+        value: FieldValue,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::SetField {
+                entity_id: entity_id.into(),
+                field: field.into(),
+                value,
+            },
+        }
+    }
+
+    /// Creates an InsertEntity operation.
+    pub fn insert_entity(
+        entity_id: impl Into<EntityId>,
+        entity_type: impl Into<String>,
+        parent_id: Option<EntityId>,
+        position: Option<String>,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::InsertEntity {
+                entity_id: entity_id.into(),
+                entity_type: entity_type.into(),
+                parent_id,
+                position,
+            },
+        }
+    }
+
+    /// Creates a RemoveEntity operation.
+    pub fn remove_entity(
+        entity_id: impl Into<EntityId>,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::RemoveEntity {
+                entity_id: entity_id.into(),
+            },
+        }
+    }
+
+    /// Creates a MoveEntity operation.
+    pub fn move_entity(
+        entity_id: impl Into<EntityId>,
+        new_parent_id: impl Into<EntityId>,
+        new_position: impl Into<String>,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::MoveEntity {
+                entity_id: entity_id.into(),
+                new_parent_id: new_parent_id.into(),
+                new_position: new_position.into(),
+            },
+        }
+    }
+
+    /// Attaches an intent string to this operation.
+    pub fn with_intent(mut self, intent: impl Into<String>) -> Self {
+        self.intent = Some(intent.into());
+        self
+    }
+}
+
+/// Result of applying an operation to a document.
+#[derive(Debug, Clone, PartialEq)]
+pub enum ApplyResult {
+    /// The operation was applied cleanly.
+    Applied,
+    /// The operation was applied but a conflict was detected.
+    Conflict(crate::entity::ConflictInfo),
+}
