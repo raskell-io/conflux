@@ -20,6 +20,47 @@ The standard approach is to funnel all changes through git: each actor opens a p
 
 - **Convergence is not guaranteed.** Different actors applying changes in different orders can produce different final states. Git merge strategies are heuristic and order-dependent. There is no formal guarantee that all replicas of the config will converge.
 
+### Example: The false conflict
+
+An autoscaler and a human both need to update the same service config file at the same time. The autoscaler is adjusting traffic weight based on load. The human is updating the request timeout after a performance review.
+
+The YAML file looks like this:
+
+```yaml
+# services/api-gateway.yaml
+route:
+  path: /api/v2
+  weight: 60
+  timeout: 3000
+```
+
+The autoscaler opens a PR changing `weight` to `80`. The human opens a PR changing `timeout` to `5000`. Git sees two branches modifying the same file and reports a merge conflict. A human has to manually resolve it — or a merge bot has to be built and maintained — even though these changes are to completely independent fields that have no semantic relationship.
+
+In a busy system this happens constantly. Every pair of concurrent writers touching the same file produces a conflict that requires intervention.
+
+### Example: The push race
+
+A deployment pipeline promotes a new image tag to staging. At the same time, a policy engine updates a resource limit on the same environment. Both systems:
+
+1. Clone the repo
+2. Make their change
+3. Commit
+4. Push
+
+The second push fails because the remote has moved. So it pulls, rebases, and pushes again — but by then a third writer may have pushed. Teams end up building retry loops with jitter and backoff just to write a config value. Under high write volume (dozens of automated actors), this becomes a significant source of latency and operational complexity. Some changes take multiple minutes to land because of repeated rebase cycles.
+
+### Example: The environment drift
+
+A team uses three long-lived branches: `main` (production), `staging`, and `dev`. A fix is applied to `main` for an urgent production issue. A week later, someone promotes a feature from `dev` to `staging` by merging the branch. The merge doesn't include the production fix because it was applied directly to `main` and never cherry-picked back. Staging now has a different base configuration than production — but nobody notices until the next production deploy introduces a regression.
+
+The fundamental issue is that branch-based environment modeling provides no mechanism to ensure that a base environment's state is consistently inherited by its descendants.
+
+### Example: The mystery write
+
+An on-call engineer notices that a service's replica count was changed at 3 AM. The git log shows a commit from a CI service account with the message "automated config update." There's no indication of which system triggered the change, what condition caused it, or whether it was an autoscaler responding to load, a rollback triggered by a failed health check, or a policy engine enforcing a minimum replica count.
+
+The engineer has to search through logs from multiple systems to reconstruct what happened. In the meantime, they don't know whether to revert the change or leave it.
+
 ## How Conflux Solves It
 
 ### Schema-aware merge instead of text merge
