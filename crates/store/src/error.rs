@@ -20,4 +20,15 @@ pub enum StoreError {
     /// Data integrity violation.
     #[error("integrity error: {0}")]
     Integrity(String),
+
+    /// Backend-specific error (for backends like PostgreSQL, DynamoDB, etc.).
+    #[error("backend error: {0}")]
+    Backend(String),
+}
+
+impl StoreError {
+    /// Creates a backend error from any error type.
+    pub fn backend<E: std::error::Error>(err: E) -> Self {
+        StoreError::Backend(err.to_string())
+    }
 }

@@ -4,12 +4,15 @@ use crate::error::StoreError;
 use crate::models::{StoredMilestone, StoredOperation, StoredSnapshot};
 use crate::query::OperationQuery;
 use conflux_core::{Document, HlcTimestamp, Operation, OperationKind};
+use parking_lot::Mutex;
 use rusqlite::{params, Connection};
 use uuid::Uuid;
 
 /// SQLite-backed store for operations, snapshots, and milestones.
+///
+/// The connection is wrapped in a `Mutex` for thread safety (`Send + Sync`).
 pub struct SqliteStore {
-    conn: Connection,
+    conn: Mutex<Connection>,
 }
 
 impl SqliteStore {
@@ -22,7 +25,9 @@ impl SqliteStore {
     /// Returns `StoreError::Database` if the connection or DDL fails.
     pub fn open(path: &str) -> Result<Self, StoreError> {
         let conn = Connection::open(path)?;
-        let store = Self { conn };
+        let store = Self {
+            conn: Mutex::new(conn),
+        };
         store.create_tables()?;
         Ok(store)
     }
@@ -34,13 +39,15 @@ impl SqliteStore {
     /// Returns `StoreError::Database` if the DDL fails.
     pub fn open_in_memory() -> Result<Self, StoreError> {
         let conn = Connection::open_in_memory()?;
-        let store = Self { conn };
+        let store = Self {
+            conn: Mutex::new(conn),
+        };
         store.create_tables()?;
         Ok(store)
     }
 
     fn create_tables(&self) -> Result<(), StoreError> {
-        self.conn.execute_batch(
+        self.conn.lock().execute_batch(
             "
             CREATE TABLE IF NOT EXISTS operations (
                 id TEXT PRIMARY KEY,
@@ -115,7 +122,7 @@ impl SqliteStore {
         let entity_id = entity_id_from_op(operation);
         let op_type = op_type_str(operation);
 
-        self.conn.execute(
+        self.conn.lock().execute(
             "INSERT INTO operations (id, document_id, hlc_timestamp, actor_id, actor_class, op_type, entity_id, payload, intent)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
             params![
@@ -139,8 +146,8 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::NotFound` if the operation doesn't exist.
     pub fn get_operation(&self, operation_id: &Uuid) -> Result<StoredOperation, StoreError> {
-        let mut stmt = self
-            .conn
+        let conn = self.conn.lock();
+        let mut stmt = conn
             .prepare("SELECT payload, document_id, created_at FROM operations WHERE id = ?1")?;
 
         let result = stmt.query_row(params![operation_id.to_string()], |row| {
@@ -189,7 +196,8 @@ impl SqliteStore {
             "SELECT payload, document_id, created_at FROM operations {where_clause} ORDER BY hlc_timestamp ASC{limit_clause}"
         );
 
-        let mut stmt = self.conn.prepare(&sql)?;
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(&sql)?;
 
         let param_refs: Vec<(&str, &dyn rusqlite::types::ToSql)> = params
             .iter()
@@ -222,7 +230,7 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::Database` on query failure.
     pub fn operation_count(&self, document_id: &str) -> Result<u64, StoreError> {
-        let count: i64 = self.conn.query_row(
+        let count: i64 = self.conn.lock().query_row(
             "SELECT COUNT(*) FROM operations WHERE document_id = ?1",
             params![document_id],
             |row| row.get(0),
@@ -247,7 +255,7 @@ impl SqliteStore {
         let id = Uuid::new_v4();
         let data = serde_json::to_string(document)?;
 
-        self.conn.execute(
+        self.conn.lock().execute(
             "INSERT INTO snapshots (id, document_id, hlc_timestamp, data)
              VALUES (?1, ?2, ?3, ?4)",
             params![id.to_string(), document_id, hlc_timestamp.to_string(), data,],
@@ -261,7 +269,8 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::NotFound` if no snapshots exist for the document.
     pub fn latest_snapshot(&self, document_id: &str) -> Result<StoredSnapshot, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
             "SELECT id, hlc_timestamp, data, created_at FROM snapshots
              WHERE document_id = ?1
              ORDER BY hlc_timestamp DESC LIMIT 1",
@@ -306,8 +315,8 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::Database` on query failure.
     pub fn operations_since_snapshot(&self, document_id: &str) -> Result<u64, StoreError> {
-        let snapshot_ts: Option<String> = self
-            .conn
+        let conn = self.conn.lock();
+        let snapshot_ts: Option<String> = conn
             .query_row(
                 "SELECT hlc_timestamp FROM snapshots
                  WHERE document_id = ?1
@@ -318,13 +327,13 @@ impl SqliteStore {
             .ok();
 
         let count: i64 = match snapshot_ts {
-            Some(ts) => self.conn.query_row(
+            Some(ts) => conn.query_row(
                 "SELECT COUNT(*) FROM operations
                  WHERE document_id = ?1 AND hlc_timestamp > ?2",
                 params![document_id, ts],
                 |row| row.get(0),
             )?,
-            None => self.conn.query_row(
+            None => conn.query_row(
                 "SELECT COUNT(*) FROM operations WHERE document_id = ?1",
                 params![document_id],
                 |row| row.get(0),
@@ -350,7 +359,7 @@ impl SqliteStore {
     ) -> Result<Uuid, StoreError> {
         let id = Uuid::new_v4();
 
-        self.conn.execute(
+        self.conn.lock().execute(
             "INSERT INTO milestones (id, document_id, git_commit, hlc_range_start, hlc_range_end, message)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
             params![
@@ -374,7 +383,8 @@ impl SqliteStore {
         &self,
         document_id: &str,
     ) -> Result<Option<StoredMilestone>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
             "SELECT id, git_commit, hlc_range_start, hlc_range_end, message, created_at
              FROM milestones
              WHERE document_id = ?1
@@ -428,7 +438,8 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::Database` on query failure.
     pub fn list_milestones(&self, document_id: &str) -> Result<Vec<StoredMilestone>, StoreError> {
-        let mut stmt = self.conn.prepare(
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(
             "SELECT id, git_commit, hlc_range_start, hlc_range_end, message, created_at
              FROM milestones
              WHERE document_id = ?1
@@ -483,8 +494,8 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::Database` on query failure.
     pub fn operations_since_milestone(&self, document_id: &str) -> Result<u64, StoreError> {
-        let milestone_end: Option<String> = self
-            .conn
+        let conn = self.conn.lock();
+        let milestone_end: Option<String> = conn
             .query_row(
                 "SELECT hlc_range_end FROM milestones
                  WHERE document_id = ?1
@@ -495,13 +506,13 @@ impl SqliteStore {
             .ok();
 
         let count: i64 = match milestone_end {
-            Some(ts) => self.conn.query_row(
+            Some(ts) => conn.query_row(
                 "SELECT COUNT(*) FROM operations
                  WHERE document_id = ?1 AND hlc_timestamp > ?2",
                 params![document_id, ts],
                 |row| row.get(0),
             )?,
-            None => self.conn.query_row(
+            None => conn.query_row(
                 "SELECT COUNT(*) FROM operations WHERE document_id = ?1",
                 params![document_id],
                 |row| row.get(0),
@@ -523,7 +534,7 @@ impl SqliteStore {
         document_id: &str,
         version_vector_json: &str,
     ) -> Result<(), StoreError> {
-        self.conn.execute(
+        self.conn.lock().execute(
             "INSERT INTO version_vectors (document_id, data)
              VALUES (?1, ?2)
              ON CONFLICT(document_id) DO UPDATE SET
@@ -540,7 +551,7 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::NotFound` if no version vector exists for the document.
     pub fn load_version_vector(&self, document_id: &str) -> Result<String, StoreError> {
-        let result = self.conn.query_row(
+        let result = self.conn.lock().query_row(
             "SELECT data FROM version_vectors WHERE document_id = ?1",
             params![document_id],
             |row| row.get::<_, String>(0),
@@ -591,7 +602,8 @@ impl SqliteStore {
             ),
         };
 
-        let mut stmt = self.conn.prepare(&sql)?;
+        let conn = self.conn.lock();
+        let mut stmt = conn.prepare(&sql)?;
 
         let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
 
@@ -621,7 +633,7 @@ impl SqliteStore {
     ///
     /// Returns `StoreError::Database` on query failure.
     pub fn operation_exists(&self, operation_id: &Uuid) -> Result<bool, StoreError> {
-        let count: i64 = self.conn.query_row(
+        let count: i64 = self.conn.lock().query_row(
             "SELECT COUNT(*) FROM operations WHERE id = ?1",
             params![operation_id.to_string()],
             |row| row.get(0),
@@ -651,6 +663,91 @@ fn op_type_str(op: &Operation) -> &'static str {
         OperationKind::MoveEntity { .. } => "move_entity",
         OperationKind::SetOverride { .. } => "set_override",
         OperationKind::ResolveConflict { .. } => "resolve_conflict",
+    }
+}
+
+// --- Store trait implementation ---
+
+impl crate::traits::Store for SqliteStore {
+    fn append_operation(&self, document_id: &str, operation: &Operation) -> Result<(), StoreError> {
+        SqliteStore::append_operation(self, document_id, operation)
+    }
+
+    fn get_operation(&self, operation_id: &Uuid) -> Result<StoredOperation, StoreError> {
+        SqliteStore::get_operation(self, operation_id)
+    }
+
+    fn query_operations(&self, query: &OperationQuery) -> Result<Vec<StoredOperation>, StoreError> {
+        SqliteStore::query_operations(self, query)
+    }
+
+    fn operation_count(&self, document_id: &str) -> Result<u64, StoreError> {
+        SqliteStore::operation_count(self, document_id)
+    }
+
+    fn operation_exists(&self, operation_id: &Uuid) -> Result<bool, StoreError> {
+        SqliteStore::operation_exists(self, operation_id)
+    }
+
+    fn get_operations_by_actor_since(
+        &self,
+        document_id: &str,
+        actor_id: &str,
+        since: Option<&HlcTimestamp>,
+    ) -> Result<Vec<StoredOperation>, StoreError> {
+        SqliteStore::get_operations_by_actor_since(self, document_id, actor_id, since)
+    }
+
+    fn save_snapshot(
+        &self,
+        document_id: &str,
+        hlc_timestamp: &HlcTimestamp,
+        document: &Document,
+    ) -> Result<Uuid, StoreError> {
+        SqliteStore::save_snapshot(self, document_id, hlc_timestamp, document)
+    }
+
+    fn latest_snapshot(&self, document_id: &str) -> Result<StoredSnapshot, StoreError> {
+        SqliteStore::latest_snapshot(self, document_id)
+    }
+
+    fn operations_since_snapshot(&self, document_id: &str) -> Result<u64, StoreError> {
+        SqliteStore::operations_since_snapshot(self, document_id)
+    }
+
+    fn record_milestone(
+        &self,
+        document_id: &str,
+        git_commit: Option<&str>,
+        hlc_range_start: &HlcTimestamp,
+        hlc_range_end: &HlcTimestamp,
+        message: Option<&str>,
+    ) -> Result<Uuid, StoreError> {
+        SqliteStore::record_milestone(self, document_id, git_commit, hlc_range_start, hlc_range_end, message)
+    }
+
+    fn latest_milestone(&self, document_id: &str) -> Result<Option<StoredMilestone>, StoreError> {
+        SqliteStore::latest_milestone(self, document_id)
+    }
+
+    fn list_milestones(&self, document_id: &str) -> Result<Vec<StoredMilestone>, StoreError> {
+        SqliteStore::list_milestones(self, document_id)
+    }
+
+    fn operations_since_milestone(&self, document_id: &str) -> Result<u64, StoreError> {
+        SqliteStore::operations_since_milestone(self, document_id)
+    }
+
+    fn save_version_vector(
+        &self,
+        document_id: &str,
+        version_vector_json: &str,
+    ) -> Result<(), StoreError> {
+        SqliteStore::save_version_vector(self, document_id, version_vector_json)
+    }
+
+    fn load_version_vector(&self, document_id: &str) -> Result<String, StoreError> {
+        SqliteStore::load_version_vector(self, document_id)
     }
 }
 
