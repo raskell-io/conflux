@@ -1,0 +1,23 @@
+[package]
+name = "conflux-tests"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+description = "Integration tests for Conflux"
+publish = false
+
+[dependencies]
+conflux-core = { path = "../core" }
+conflux-schema = { path = "../schema" }
+conflux-store = { path = "../store" }
+conflux-git = { path = "../git" }
+conflux-api = { path = "../api" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+serde_yaml = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
+tempfile = { workspace = true }
+uuid = { workspace = true }

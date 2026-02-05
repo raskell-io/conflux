@@ -1,0 +1,40 @@
+# Sample route configurations
+# Import with: conflux import configs/routes.yaml --entity-type route
+
+route.api-public:
+  path: "/api/v1/*"
+  service: "service.api"
+  weight: 100
+  timeout: "30s"
+  retries: 3
+  rate_limit: 1000
+  methods: ["GET", "POST", "PUT", "DELETE"]
+  headers:
+    X-Frame-Options: "DENY"
+    X-Content-Type-Options: "nosniff"
+
+route.api-internal:
+  path: "/internal/*"
+  service: "service.api"
+  weight: 100
+  timeout: "60s"
+  retries: 5
+  methods: ["GET", "POST"]
+
+route.frontend:
+  path: "/*"
+  service: "service.frontend"
+  weight: 100
+  timeout: "10s"
+  retries: 2
+  methods: ["GET"]
+  headers:
+    Cache-Control: "public, max-age=3600"
+
+route.websocket:
+  path: "/ws/*"
+  service: "service.api"
+  weight: 100
+  timeout: "300s"
+  retries: 0
+  methods: ["GET"]

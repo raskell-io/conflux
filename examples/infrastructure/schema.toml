@@ -1,0 +1,53 @@
+# Infrastructure Configuration Schema
+#
+# This schema defines the structure for a typical microservices infrastructure:
+# - Services: Application deployments
+# - Routes: Traffic routing rules
+# - Policies: Rate limits and access controls
+
+[schema]
+name = "infrastructure"
+version = "1.0.0"
+
+[environments]
+base = "production"
+overlays = [
+    { name = "staging", inherits = "production" },
+    { name = "development", inherits = "staging" },
+]
+
+# Service represents a deployed application
+[entity.service]
+fields = [
+    { name = "image", type = "string", merge = "lww" },
+    { name = "replicas", type = "int", merge = "max", default = 1 },
+    { name = "cpu_limit", type = "string", merge = "lww", default = "500m" },
+    { name = "memory_limit", type = "string", merge = "lww", default = "512Mi" },
+    { name = "env_vars", type = "map", merge = "lww" },
+    { name = "ports", type = "list<int>", merge = "set" },
+    { name = "health_check_path", type = "string", merge = "lww" },
+    { name = "enabled", type = "bool", merge = "lww", default = true },
+]
+
+# Route represents a traffic routing rule
+[entity.route]
+fields = [
+    { name = "path", type = "string", merge = "lww" },
+    { name = "service", type = "ref<service>", merge = "lww" },
+    { name = "weight", type = "int", merge = "max", default = 100 },
+    { name = "timeout", type = "duration", merge = "min", default = "30s" },
+    { name = "retries", type = "int", merge = "max", default = 3 },
+    { name = "rate_limit", type = "int", merge = "min" },
+    { name = "methods", type = "list<string>", merge = "set" },
+    { name = "headers", type = "map", merge = "lww" },
+]
+
+# Policy represents access control and rate limiting
+[entity.policy]
+fields = [
+    { name = "type", type = "string", merge = "lww" },
+    { name = "target", type = "string", merge = "lww" },
+    { name = "rules", type = "list<string>", merge = "set" },
+    { name = "priority", type = "int", merge = "max", default = 0 },
+    { name = "enabled", type = "bool", merge = "lww", default = true },
+]

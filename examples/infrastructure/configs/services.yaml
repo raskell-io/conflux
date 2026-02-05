@@ -1,0 +1,42 @@
+# Sample service configurations
+# Import with: conflux import configs/services.yaml --entity-type service
+
+service.api:
+  image: "myapp/api:v2.1.0"
+  replicas: 3
+  cpu_limit: "1000m"
+  memory_limit: "1Gi"
+  ports: [8080, 8443]
+  health_check_path: "/health"
+  env_vars:
+    LOG_LEVEL: "info"
+    DATABASE_POOL_SIZE: "10"
+
+service.worker:
+  image: "myapp/worker:v2.1.0"
+  replicas: 5
+  cpu_limit: "2000m"
+  memory_limit: "2Gi"
+  ports: [9090]
+  health_check_path: "/healthz"
+  env_vars:
+    LOG_LEVEL: "info"
+    QUEUE_CONCURRENCY: "20"
+
+service.frontend:
+  image: "myapp/frontend:v3.0.0"
+  replicas: 2
+  cpu_limit: "500m"
+  memory_limit: "512Mi"
+  ports: [3000]
+  health_check_path: "/"
+  env_vars:
+    API_URL: "https://api.example.com"
+
+service.cache:
+  image: "redis:7-alpine"
+  replicas: 1
+  cpu_limit: "500m"
+  memory_limit: "1Gi"
+  ports: [6379]
+  health_check_path: "/ping"

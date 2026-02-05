@@ -1,0 +1,30 @@
+# Sample policy configurations
+# Import with: conflux import configs/policies.yaml --entity-type policy
+
+policy.rate-limit-api:
+  type: "rate-limit"
+  target: "route.api-public"
+  priority: 10
+  rules:
+    - "limit: 1000/minute per IP"
+    - "burst: 50"
+  enabled: true
+
+policy.auth-internal:
+  type: "authentication"
+  target: "route.api-internal"
+  priority: 20
+  rules:
+    - "require: jwt"
+    - "issuer: auth.example.com"
+  enabled: true
+
+policy.cors-frontend:
+  type: "cors"
+  target: "route.frontend"
+  priority: 5
+  rules:
+    - "origins: https://example.com, https://www.example.com"
+    - "methods: GET, POST"
+    - "max-age: 86400"
+  enabled: true
