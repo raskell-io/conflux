@@ -54,7 +54,7 @@ Per-environment field overrides and promotion workflow.
 - [x] `SetOverride` operation type in `conflux-core`
 - [x] Environment-aware field resolution (inheritance chain lookup)
 - [x] Environment API endpoints (`/v1/envs`, `/v1/envs/{env}/state`, `/v1/envs/diff`)
-- [ ] `conflux promote` command (staging → production as an operation)
+- [x] `conflux promote` command (staging → production as an operation)
 - [ ] Environment-aware `conflux diff`
 - [ ] Per-environment milestone projection (separate directories)
 
@@ -63,7 +63,7 @@ Per-environment field overrides and promotion workflow.
 - [x] Environment inheritance chain validation
 - [x] Core field resolution with environment context
 - [x] Environment API endpoints (list, state, diff)
-- [ ] Promote command is placeholder only
+- [x] Promote command fully functional
 
 ---
 
