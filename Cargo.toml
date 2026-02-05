@@ -37,10 +37,10 @@ async-trait = "0.1"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
-toml = "0.8"
+toml = "0.9"
 kdl = "6.0"
-quick-xml = { version = "0.37", features = ["serialize"] }
-hcl-rs = "0.18"
+quick-xml = { version = "0.39", features = ["serialize"] }
+hcl-rs = "0.19"
 
 # Logging and tracing
 tracing = "0.1"
@@ -70,7 +70,7 @@ uuid = { version = "1.20", features = ["v4", "serde"] }
 sha2 = "0.10"
 
 # Storage
-rusqlite = { version = "0.33", features = ["bundled"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
 
 # CLI
 clap = { version = "4.5", features = ["derive"] }
@@ -84,7 +84,7 @@ chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
 parking_lot = "0.12"
 bytes = "1.9"
-whoami = "1.5"
+whoami = "2.1"
 tempfile = "3.16"
 
 [profile.release]
