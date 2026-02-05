@@ -150,8 +150,8 @@ fn run_create(args: CreateArgs, config: &Config, config_dir: &Path) -> Result<()
 
     let projector = MilestoneProjector::new(projector_config);
 
-    // Project to git
-    let result = projector.project(&document, operations, &environments, &args.message)?;
+    // Project to git with environment-aware field resolution
+    let result = projector.project(&document, operations, &environments, &args.message, &schema_info)?;
 
     // Record milestone
     let milestone_id = if let (Some(start), Some(end)) = (result.hlc_start, result.hlc_end) {

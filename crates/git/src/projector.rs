@@ -3,6 +3,7 @@
 use crate::commit::CommitBuilder;
 use crate::error::GitError;
 use crate::format::{serialize_document, OutputFile, OutputFormat};
+use conflux_core::schema_info::SchemaInfo;
 use conflux_core::{Document, FieldValue, HlcTimestamp, Operation};
 use serde_json::json;
 use std::collections::BTreeMap;
@@ -82,6 +83,7 @@ impl MilestoneProjector {
     /// * `operations` - Operations since the last milestone
     /// * `environments` - List of environments to project
     /// * `message` - Human-readable milestone message
+    /// * `schema` - Schema info for environment-aware field resolution
     ///
     /// # Errors
     ///
@@ -92,13 +94,13 @@ impl MilestoneProjector {
         operations: Vec<Operation>,
         environments: &[String],
         message: &str,
+        schema: &dyn SchemaInfo,
     ) -> Result<MilestoneResult, GitError> {
-        // Convert document to serializable format
-        let entities = document_to_serializable(document);
-
-        // Serialize to files for each environment
+        // Serialize to files for each environment with environment-resolved values
         let mut all_files = Vec::new();
         for env in environments {
+            // Convert document to serializable format with environment-specific field resolution
+            let entities = document_to_serializable_for_env(document, env, schema);
             let files = serialize_document(&entities, env, self.config.default_format)?;
             all_files.extend(files);
         }
@@ -274,7 +276,57 @@ impl MilestoneProjector {
     }
 }
 
-/// Converts a Document to a serializable BTreeMap.
+/// Converts a Document to a serializable BTreeMap with environment-resolved field values.
+///
+/// For each entity, this resolves field values by walking up the environment inheritance
+/// chain, falling back to base field values when no override exists.
+fn document_to_serializable_for_env(
+    document: &Document,
+    environment: &str,
+    schema: &dyn SchemaInfo,
+) -> BTreeMap<String, serde_json::Value> {
+    let mut result = BTreeMap::new();
+
+    for (entity_id, entity) in &document.entities {
+        // Skip tombstoned entities
+        if entity.tombstone.value {
+            continue;
+        }
+
+        let mut fields = serde_json::Map::new();
+        fields.insert("_type".to_string(), json!(entity.entity_type));
+
+        if let Some(parent) = &entity.parent_id {
+            fields.insert("_parent".to_string(), json!(parent.to_string()));
+        }
+
+        // Get field names from schema for this entity type
+        if let Some(field_names) = schema.entity_fields(&entity.entity_type) {
+            for field_name in field_names {
+                // Use environment-aware field resolution
+                if let Some(value) = document.get_field_for_env(entity_id, field_name, environment, schema) {
+                    fields.insert(field_name.to_string(), field_value_to_json(&value));
+                }
+            }
+        } else {
+            // Fallback: use raw field values if entity type not in schema
+            for (field_name, field_state) in &entity.fields {
+                let value = field_value_to_json(&field_state.value());
+                fields.insert(field_name.clone(), value);
+            }
+        }
+
+        result.insert(entity_id.to_string(), serde_json::Value::Object(fields));
+    }
+
+    result
+}
+
+/// Converts a Document to a serializable BTreeMap (without environment resolution).
+///
+/// This is the legacy function that doesn't apply environment overrides.
+/// Use `document_to_serializable_for_env` for environment-aware projection.
+#[allow(dead_code)]
 fn document_to_serializable(document: &Document) -> BTreeMap<String, serde_json::Value> {
     let mut result = BTreeMap::new();
 
@@ -329,10 +381,21 @@ fn field_value_to_json(value: &FieldValue) -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use conflux_core::{ActorClass, ActorId, Clock, Entity, EntityId};
+    use conflux_core::schema_info::SimpleSchemaInfo;
+    use conflux_core::{ActorClass, ActorId, Clock, Entity, EntityId, MergeStrategy};
 
     fn test_actor() -> ActorId {
         ActorId::new("test", ActorClass::System)
+    }
+
+    fn test_schema() -> SimpleSchemaInfo {
+        let mut schema = SimpleSchemaInfo::new();
+        schema.add_field("route", "weight", "int", MergeStrategy::Max);
+        schema.add_field("route", "timeout", "int", MergeStrategy::Lww);
+        schema.set_base_environment("production");
+        schema.add_environment("staging", "production");
+        schema.add_environment("development", "staging");
+        schema
     }
 
     #[test]
@@ -404,13 +467,96 @@ mod tests {
         );
         doc.entities.insert(EntityId::new("route.api"), entity);
 
+        let schema = test_schema();
+
         // Project
         let result = projector
-            .project(&doc, vec![], &["production".to_string()], "initial commit")
+            .project(
+                &doc,
+                vec![],
+                &["production".to_string()],
+                "initial commit",
+                &schema,
+            )
             .unwrap();
 
         assert!(!result.commit_sha.is_empty());
         assert!(!result.files_written.is_empty());
+
+        // Cleanup
+        let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn projector_with_environment_overrides() {
+        use std::env;
+
+        // Create a temp directory for the test repo
+        let temp_dir = env::temp_dir().join(format!("conflux-git-env-test-{}", uuid::Uuid::new_v4()));
+
+        let config = ProjectorConfig::new(&temp_dir)
+            .with_format(OutputFormat::Yaml)
+            .with_author("Test", "test@test.com");
+
+        let projector = MilestoneProjector::new(config);
+        projector.init_repo().unwrap();
+
+        let clock = Clock::new();
+        let actor = test_actor();
+        let mut doc = Document::new();
+        let schema = test_schema();
+
+        // Create entity with base field and staging override
+        let op = Operation::insert_entity(
+            EntityId::new("route.api"),
+            "route",
+            None,
+            None,
+            &actor,
+            clock.new_timestamp(),
+        );
+        let _ = doc.apply(&op, &schema, &clock);
+
+        let op = Operation::set_field(
+            EntityId::new("route.api"),
+            "weight",
+            FieldValue::Int(100),
+            &actor,
+            clock.new_timestamp(),
+        );
+        let _ = doc.apply(&op, &schema, &clock);
+
+        let op = Operation::set_override(
+            EntityId::new("route.api"),
+            "weight",
+            "staging",
+            FieldValue::Int(50),
+            &actor,
+            clock.new_timestamp(),
+        );
+        let _ = doc.apply(&op, &schema, &clock);
+
+        // Project to both environments
+        let result = projector
+            .project(
+                &doc,
+                vec![],
+                &["production".to_string(), "staging".to_string()],
+                "env override test",
+                &schema,
+            )
+            .unwrap();
+
+        assert!(!result.commit_sha.is_empty());
+
+        // Verify the files have different content
+        let prod_file = fs::read_to_string(temp_dir.join("production/route.yaml")).unwrap();
+        let staging_file = fs::read_to_string(temp_dir.join("staging/route.yaml")).unwrap();
+
+        // Production should have weight: 100, staging should have weight: 50
+        assert!(prod_file.contains("100"), "production should have weight 100");
+        assert!(staging_file.contains("50"), "staging should have weight 50");
+        assert!(!staging_file.contains("100"), "staging should NOT have weight 100");
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);

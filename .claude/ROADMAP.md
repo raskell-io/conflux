@@ -56,7 +56,7 @@ Per-environment field overrides and promotion workflow.
 - [x] Environment API endpoints (`/v1/envs`, `/v1/envs/{env}/state`, `/v1/envs/diff`)
 - [x] `conflux promote` command (staging → production as an operation)
 - [x] Environment-aware `conflux diff`
-- [ ] Per-environment milestone projection (separate directories)
+- [x] Per-environment milestone projection (separate directories)
 
 ### Current Status
 - [x] Schema parsing for environment definitions
@@ -65,6 +65,7 @@ Per-environment field overrides and promotion workflow.
 - [x] Environment API endpoints (list, state, diff)
 - [x] Promote command fully functional
 - [x] Environment-aware diff (--from-env/--to-env and --env options)
+- [x] Per-environment milestone projection with resolved values
 
 ---
 

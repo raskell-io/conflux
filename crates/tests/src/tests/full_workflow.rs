@@ -241,7 +241,7 @@ fn workflow_with_milestones() {
 
     // Project to git
     let result = projector
-        .project(&document, ops.clone(), &["production".to_string()], "Initial setup")
+        .project(&document, ops.clone(), &["production".to_string()], "Initial setup", &schema_info)
         .expect("project milestone");
 
     assert!(!result.commit_sha.is_empty());

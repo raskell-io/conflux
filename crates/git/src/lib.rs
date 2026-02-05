@@ -15,6 +15,7 @@
 //!
 //! ```rust,no_run
 //! use conflux_git::{MilestoneProjector, ProjectorConfig, OutputFormat};
+//! use conflux_core::schema_info::SimpleSchemaInfo;
 //! use conflux_core::Document;
 //!
 //! let config = ProjectorConfig::new("/path/to/repo")
@@ -23,11 +24,13 @@
 //!
 //! let projector = MilestoneProjector::new(config);
 //! let doc = Document::new();
+//! let schema = SimpleSchemaInfo::new();
 //! let result = projector.project(
 //!     &doc,
 //!     vec![],
 //!     &["production".to_string()],
 //!     "Weekly release",
+//!     &schema,
 //! ).unwrap();
 //!
 //! println!("Committed: {}", result.commit_sha);

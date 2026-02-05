@@ -368,8 +368,9 @@ pub async fn create_milestone(
         req.environments
     };
 
-    // Project to git
-    let result = projector.project(&doc, operations, &environments, &req.message)?;
+    // Project to git with environment-aware field resolution
+    let schema_info = state.schema.as_schema_info();
+    let result = projector.project(&doc, operations, &environments, &req.message, &schema_info)?;
 
     // Record milestone in store
     let milestone_id = {
