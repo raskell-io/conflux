@@ -69,37 +69,40 @@ Per-environment field overrides and promotion workflow.
 
 ---
 
-## v0.3 — Conflict Review Workflow
+## v0.3 — Conflict Review Workflow ✅
 
 Human-in-the-loop conflict resolution for `review` merge strategy fields.
 
 ### Goals
 - [x] Conflict flagging for `review` merge strategy fields (core implemented)
-- [ ] `conflux conflicts` command to list unresolved conflicts
-- [ ] `conflux resolve` command for human conflict resolution
+- [x] `conflux conflicts` command to list unresolved conflicts
+- [x] `conflux resolve` command for human conflict resolution
+- [x] `ResolveConflict` operation type
+- [x] `Document.list_conflicts()` method
 - [ ] Conflict metadata in milestone commits
 - [ ] Conflict notification hooks
 
 ---
 
-## v0.4 — Reactive Consumers
+## v0.4 — Reactive Consumers ✅
 
 Push-based state updates for machine actors and reconcilers.
 
 ### Goals
-- [ ] gRPC service definition (`.proto` files)
-- [ ] gRPC `Apply`, `BatchApply`, `GetState` endpoints
-- [ ] gRPC `WatchState` streaming endpoint
-- [ ] Webhook registration and subscription API
-- [ ] Webhook notifications on state change
+- [x] gRPC service definition (`proto/conflux.proto`)
+- [x] gRPC `SubmitOperation`, `GetState`, `GetEntity` endpoints
+- [x] gRPC `WatchState` streaming endpoint
+- [x] `StateChangeEvent` broadcast channel
+- [x] Webhook infrastructure (`WebhookManager`)
+- [x] `conflux watch` CLI command
 - [ ] Event format for GitOps reconcilers (Flux, ArgoCD compatible)
-- [ ] `conflux watch` CLI command
+- [ ] Webhook registration HTTP API endpoints
 
 ### Current Status
 - [x] HTTP REST API functional (11 endpoints)
-- [x] tonic/prost dependencies present
-- [ ] gRPC implementation (NOT STARTED)
-- [ ] Webhook infrastructure (NOT STARTED)
+- [x] gRPC service implementation with tonic
+- [x] Webhook manager for HTTP callback delivery
+- [x] Real-time state watching (CLI + gRPC streaming)
 
 ---
 
