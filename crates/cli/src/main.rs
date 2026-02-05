@@ -31,6 +31,9 @@ enum Commands {
     /// Set a field value on an entity.
     Set(commands::set::SetArgs),
 
+    /// Bulk set a field value across multiple entities.
+    BulkSet(commands::bulk_set::BulkSetArgs),
+
     /// Get entity or field values.
     Get(commands::get::GetArgs),
 
@@ -92,6 +95,7 @@ async fn main() -> Result<()> {
         Commands::Init(_) => unreachable!(), // Handled above
         Commands::Import(args) => commands::import::run(args, &config, &config_dir),
         Commands::Set(args) => commands::set::run(args, &config, &config_dir),
+        Commands::BulkSet(args) => commands::bulk_set::run(args, &config, &config_dir),
         Commands::Get(args) => commands::get::run(args, &config, &config_dir),
         Commands::Diff(args) => commands::diff::run(args, &config, &config_dir),
         Commands::Log(args) => commands::log::run(args, &config, &config_dir),

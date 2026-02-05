@@ -1,6 +1,7 @@
 //! CLI command implementations.
 
 pub mod blame;
+pub mod bulk_set;
 pub mod conflicts;
 pub mod daemon;
 pub mod diff;

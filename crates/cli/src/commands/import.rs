@@ -39,6 +39,23 @@ pub struct ImportArgs {
     /// Dry run - show what would be imported without making changes.
     #[arg(long)]
     pub dry_run: bool,
+
+    /// Recursively import all config files in directory.
+    #[arg(long, short)]
+    pub recursive: bool,
+
+    /// File extensions to include (comma-separated, e.g., "yaml,json,toml").
+    /// Defaults to yaml,yml,json,toml.
+    #[arg(long, default_value = "yaml,yml,json,toml")]
+    pub extensions: String,
+
+    /// Use filename (without extension) as entity ID prefix.
+    #[arg(long)]
+    pub use_filename_prefix: bool,
+
+    /// Pattern to filter files (glob pattern, e.g., "*.yaml" or "routes/*.json").
+    #[arg(long)]
+    pub pattern: Option<String>,
 }
 
 /// Runs the import command.
@@ -59,18 +76,34 @@ pub fn run(args: ImportArgs, config: &Config, config_dir: &Path) -> Result<()> {
         );
     }
 
-    // Read and parse the input file
-    let content = std::fs::read_to_string(&args.path)
-        .with_context(|| format!("reading {}", args.path.display()))?;
+    // Collect files to import
+    let files = collect_files(&args)?;
 
-    let parsed = parse_config_file(&args.path, &content)?;
+    if files.is_empty() {
+        println!("No files found to import.");
+        return Ok(());
+    }
+
+    println!("Found {} file(s) to import", files.len());
 
     if args.dry_run {
-        println!("Dry run - would import:");
-        for (entity_id, fields) in &parsed {
-            println!("  Entity: {entity_id} (type: {})", args.entity_type);
-            for (field, value) in fields {
-                println!("    {field}: {value:?}");
+        println!("\nDry run - would import:");
+        for file in &files {
+            let content = std::fs::read_to_string(file)
+                .with_context(|| format!("reading {}", file.display()))?;
+            let parsed = parse_config_file(file, &content)?;
+            let prefix = get_entity_prefix(&args, file);
+
+            for (entity_id, fields) in &parsed {
+                let full_id = if let Some(ref p) = prefix {
+                    format!("{}.{}", p, entity_id)
+                } else {
+                    entity_id.clone()
+                };
+                println!("  Entity: {full_id} (type: {})", args.entity_type);
+                for (field, value) in fields {
+                    println!("    {field}: {value:?}");
+                }
             }
         }
         return Ok(());
@@ -91,60 +124,187 @@ pub fn run(args: ImportArgs, config: &Config, config_dir: &Path) -> Result<()> {
 
     // Load existing state from store
     let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
+        &conflux_store::OperationQuery::new(&config.document_id).limit(100000),
     )?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
     }
 
-    let mut operation_count = 0;
+    let mut total_operations = 0;
+    let mut total_entities = 0;
 
-    // Create operations for each entity
+    // Import each file
+    for file in &files {
+        let content = std::fs::read_to_string(file)
+            .with_context(|| format!("reading {}", file.display()))?;
+        let parsed = parse_config_file(file, &content)?;
+        let prefix = get_entity_prefix(&args, file);
+
+        let (ops, entities) = import_entities(
+            &parsed,
+            prefix.as_deref(),
+            &args.entity_type,
+            &args.intent,
+            &actor,
+            &clock,
+            &mut document,
+            &schema_info,
+            &store,
+            &config.document_id,
+        )?;
+
+        total_operations += ops;
+        total_entities += entities;
+
+        println!(
+            "  Imported {} ({} entities, {} operations)",
+            file.display(),
+            entities,
+            ops
+        );
+    }
+
+    println!(
+        "\nTotal: imported {} entities with {} operations from {} files",
+        total_entities,
+        total_operations,
+        files.len()
+    );
+
+    Ok(())
+}
+
+/// Collects files to import based on arguments.
+fn collect_files(args: &ImportArgs) -> Result<Vec<PathBuf>> {
+    let mut files = Vec::new();
+    let extensions: Vec<&str> = args.extensions.split(',').map(|s| s.trim()).collect();
+
+    if args.path.is_file() {
+        files.push(args.path.clone());
+    } else if args.path.is_dir() {
+        collect_files_from_dir(&args.path, &extensions, args.recursive, &mut files)?;
+    } else {
+        anyhow::bail!("path does not exist: {}", args.path.display());
+    }
+
+    // Apply pattern filter if specified
+    if let Some(ref pattern) = args.pattern {
+        let glob_pattern = glob::Pattern::new(pattern)
+            .with_context(|| format!("invalid glob pattern: {pattern}"))?;
+        files.retain(|f| {
+            f.file_name()
+                .and_then(|n| n.to_str())
+                .map(|n| glob_pattern.matches(n))
+                .unwrap_or(false)
+        });
+    }
+
+    // Sort for deterministic ordering
+    files.sort();
+
+    Ok(files)
+}
+
+/// Recursively collects files from a directory.
+fn collect_files_from_dir(
+    dir: &Path,
+    extensions: &[&str],
+    recursive: bool,
+    files: &mut Vec<PathBuf>,
+) -> Result<()> {
+    for entry in std::fs::read_dir(dir)
+        .with_context(|| format!("reading directory {}", dir.display()))?
+    {
+        let entry = entry?;
+        let path = entry.path();
+
+        if path.is_dir() && recursive {
+            collect_files_from_dir(&path, extensions, recursive, files)?;
+        } else if path.is_file() {
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if extensions.iter().any(|e| e.eq_ignore_ascii_case(ext)) {
+                    files.push(path);
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+/// Gets the entity ID prefix based on filename if enabled.
+fn get_entity_prefix(args: &ImportArgs, file: &Path) -> Option<String> {
+    if args.use_filename_prefix {
+        file.file_stem()
+            .and_then(|s| s.to_str())
+            .map(|s| s.to_string())
+    } else {
+        None
+    }
+}
+
+/// Imports entities from parsed config.
+#[allow(clippy::too_many_arguments)]
+fn import_entities(
+    parsed: &HashMap<String, HashMap<String, FieldValue>>,
+    prefix: Option<&str>,
+    entity_type: &str,
+    intent: &str,
+    actor: &conflux_core::ActorId,
+    clock: &Clock,
+    document: &mut Document,
+    schema_info: &dyn conflux_core::schema_info::SchemaInfo,
+    store: &SqliteStore,
+    document_id: &str,
+) -> Result<(usize, usize)> {
+    let mut operation_count = 0;
+    let mut entity_count = 0;
+
     for (entity_id, fields) in parsed {
-        let entity_id_obj = EntityId::new(&entity_id);
+        let full_entity_id = if let Some(p) = prefix {
+            format!("{}.{}", p, entity_id)
+        } else {
+            entity_id.clone()
+        };
+
+        let entity_id_obj = EntityId::new(&full_entity_id);
 
         // Insert entity if it doesn't exist
         if document.get_entity(&entity_id_obj).is_none() {
             let insert_op = Operation::insert_entity(
-                entity_id.clone(),
-                args.entity_type.clone(),
+                full_entity_id.clone(),
+                entity_type.to_string(),
                 None,
                 None,
-                &actor,
+                actor,
                 clock.new_timestamp(),
             )
-            .with_intent(&args.intent);
+            .with_intent(intent);
 
-            document.apply(&insert_op, &schema_info, &clock)?;
-            store.append_operation(&config.document_id, &insert_op)?;
+            document.apply(&insert_op, schema_info, clock)?;
+            store.append_operation(document_id, &insert_op)?;
             operation_count += 1;
+            entity_count += 1;
         }
 
         // Set fields
         for (field_name, value) in fields {
             let set_op = Operation::set_field(
-                entity_id.clone(),
+                full_entity_id.clone(),
                 field_name,
-                value,
-                &actor,
+                value.clone(),
+                actor,
                 clock.new_timestamp(),
             )
-            .with_intent(&args.intent);
+            .with_intent(intent);
 
-            document.apply(&set_op, &schema_info, &clock)?;
-            store.append_operation(&config.document_id, &set_op)?;
+            document.apply(&set_op, schema_info, clock)?;
+            store.append_operation(document_id, &set_op)?;
             operation_count += 1;
         }
     }
 
-    println!(
-        "Imported {} operations from {}",
-        operation_count,
-        args.path.display()
-    );
-
-    Ok(())
+    Ok((operation_count, entity_count))
 }
 
 /// Parses a configuration file and returns entity ID to fields mapping.

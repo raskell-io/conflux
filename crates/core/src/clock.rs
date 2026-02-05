@@ -171,7 +171,7 @@ mod tests {
         // Creating a clock with a node ID should succeed
         let clock = Clock::with_node_id("node-a").unwrap();
         let ts = clock.new_timestamp();
-        assert!(ts.to_string().len() > 0);
+        assert!(!ts.to_string().is_empty());
     }
 
     #[test]
@@ -184,7 +184,7 @@ mod tests {
         let ts2 = clock2.new_timestamp();
 
         // Both should generate valid timestamps
-        assert!(ts1.to_string().len() > 0);
-        assert!(ts2.to_string().len() > 0);
+        assert!(!ts1.to_string().is_empty());
+        assert!(!ts2.to_string().is_empty());
     }
 }
