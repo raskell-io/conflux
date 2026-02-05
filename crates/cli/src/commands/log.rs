@@ -186,6 +186,21 @@ fn format_operation_kind(kind: &conflux_core::OperationKind) -> String {
                 entity_id, field, environment, value
             )
         }
+        OperationKind::ResolveConflict {
+            entity_id,
+            field,
+            environment,
+            chosen_value,
+        } => {
+            if let Some(env) = environment {
+                format!(
+                    "resolve_conflict({}.{}[{}] = {:?})",
+                    entity_id, field, env, chosen_value
+                )
+            } else {
+                format!("resolve_conflict({}.{} = {:?})", entity_id, field, chosen_value)
+            }
+        }
     }
 }
 
@@ -217,6 +232,18 @@ fn format_operation_kind_short(kind: &conflux_core::OperationKind) -> String {
             ..
         } => {
             format!("override {}.{}[{}]", entity_id, field, environment)
+        }
+        OperationKind::ResolveConflict {
+            entity_id,
+            field,
+            environment,
+            ..
+        } => {
+            if let Some(env) = environment {
+                format!("resolve {}.{}[{}]", entity_id, field, env)
+            } else {
+                format!("resolve {}.{}", entity_id, field)
+            }
         }
     }
 }

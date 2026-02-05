@@ -512,7 +512,8 @@ fn entity_id_from_op(op: &Operation) -> &str {
         | OperationKind::InsertEntity { entity_id, .. }
         | OperationKind::RemoveEntity { entity_id }
         | OperationKind::MoveEntity { entity_id, .. }
-        | OperationKind::SetOverride { entity_id, .. } => entity_id.as_str(),
+        | OperationKind::SetOverride { entity_id, .. }
+        | OperationKind::ResolveConflict { entity_id, .. } => entity_id.as_str(),
     }
 }
 
@@ -524,6 +525,7 @@ fn op_type_str(op: &Operation) -> &'static str {
         OperationKind::RemoveEntity { .. } => "remove_entity",
         OperationKind::MoveEntity { .. } => "move_entity",
         OperationKind::SetOverride { .. } => "set_override",
+        OperationKind::ResolveConflict { .. } => "resolve_conflict",
     }
 }
 

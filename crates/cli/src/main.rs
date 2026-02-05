@@ -52,6 +52,12 @@ enum Commands {
     /// Promote configuration between environments.
     Promote(commands::promote::PromoteArgs),
 
+    /// List unresolved conflicts.
+    Conflicts(commands::conflicts::ConflictsArgs),
+
+    /// Resolve a conflict by choosing a value.
+    Resolve(commands::resolve::ResolveArgs),
+
     /// Run the Conflux daemon (API server).
     Daemon(commands::daemon::DaemonArgs),
 }
@@ -90,6 +96,8 @@ async fn main() -> Result<()> {
         Commands::Status(args) => commands::status::run(args, &config, &config_dir),
         Commands::Milestone(args) => commands::milestone::run(args, &config, &config_dir),
         Commands::Promote(args) => commands::promote::run(args, &config, &config_dir),
+        Commands::Conflicts(args) => commands::conflicts::run(args, &config, &config_dir),
+        Commands::Resolve(args) => commands::resolve::run(args, &config, &config_dir),
         Commands::Daemon(args) => commands::daemon::run(args, &config, &config_dir).await,
     }
 }

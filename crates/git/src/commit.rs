@@ -141,6 +141,18 @@ fn format_operation(op: &Operation) -> String {
         } => {
             format!("[{actor}] {entity_id}.{field}@{environment}: override{intent}")
         }
+        OperationKind::ResolveConflict {
+            entity_id,
+            field,
+            environment,
+            ..
+        } => {
+            if let Some(env) = environment {
+                format!("[{actor}] {entity_id}.{field}@{env}: resolve{intent}")
+            } else {
+                format!("[{actor}] {entity_id}.{field}: resolve{intent}")
+            }
+        }
     }
 }
 

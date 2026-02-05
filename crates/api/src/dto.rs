@@ -50,6 +50,14 @@ pub enum OperationDto {
         environment: String,
         value: serde_json::Value,
     },
+    /// Resolve a conflict by choosing a value.
+    ResolveConflict {
+        entity_id: String,
+        field: String,
+        /// Environment if resolving an override conflict.
+        environment: Option<String>,
+        chosen_value: serde_json::Value,
+    },
 }
 
 /// Response after submitting an operation.
@@ -199,6 +207,12 @@ pub enum OperationLogKind {
         field: String,
         environment: String,
         value: serde_json::Value,
+    },
+    ResolveConflict {
+        entity_id: String,
+        field: String,
+        environment: Option<String>,
+        chosen_value: serde_json::Value,
     },
 }
 
@@ -382,6 +396,17 @@ pub fn operation_kind_to_log(kind: &OperationKind) -> OperationLogKind {
             field: field.clone(),
             environment: environment.clone(),
             value: field_value_to_json(value),
-        }
+        },
+        OperationKind::ResolveConflict {
+            entity_id,
+            field,
+            environment,
+            chosen_value,
+        } => OperationLogKind::ResolveConflict {
+            entity_id: entity_id.to_string(),
+            field: field.clone(),
+            environment: environment.clone(),
+            chosen_value: field_value_to_json(chosen_value),
+        },
     }
 }

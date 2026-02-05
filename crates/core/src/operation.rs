@@ -53,6 +53,15 @@ pub enum OperationKind {
         environment: String,
         value: FieldValue,
     },
+    /// Resolve a conflict by explicitly choosing a value.
+    ResolveConflict {
+        entity_id: EntityId,
+        field: String,
+        /// Environment if resolving an override conflict, None for base field.
+        environment: Option<String>,
+        /// The chosen value to resolve the conflict.
+        chosen_value: FieldValue,
+    },
 }
 
 impl Operation {
@@ -157,6 +166,29 @@ impl Operation {
                 field: field.into(),
                 environment: environment.into(),
                 value,
+            },
+        }
+    }
+
+    /// Creates a ResolveConflict operation for explicitly resolving a conflict.
+    pub fn resolve_conflict(
+        entity_id: impl Into<EntityId>,
+        field: impl Into<String>,
+        environment: Option<String>,
+        chosen_value: FieldValue,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::ResolveConflict {
+                entity_id: entity_id.into(),
+                field: field.into(),
+                environment,
+                chosen_value,
             },
         }
     }

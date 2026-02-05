@@ -57,6 +57,24 @@ impl ReviewRegister {
         // by checking that the actors differ and the values differ.
         self.actor != other.actor && self.value != other.value
     }
+
+    /// Resolves a conflict by setting the chosen value and marking as Resolved.
+    ///
+    /// This is used when a human explicitly chooses which value should win.
+    pub fn resolve(
+        &self,
+        chosen_value: FieldValue,
+        timestamp: HlcTimestamp,
+        actor: ActorId,
+    ) -> Self {
+        Self {
+            value: chosen_value,
+            timestamp,
+            actor,
+            conflict: ConflictState::Resolved,
+            pending_writes: Vec::new(),
+        }
+    }
 }
 
 impl CrdtMerge for ReviewRegister {

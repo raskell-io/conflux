@@ -74,6 +74,10 @@ pub enum OperationError {
         expected: String,
         actual: String,
     },
+
+    /// Attempted to resolve a conflict on a field that has no conflict.
+    #[error("no conflict on field '{field}' of entity '{entity_id}'")]
+    NotAConflict { entity_id: String, field: String },
 }
 
 /// Errors during schema or document validation.

@@ -142,6 +142,19 @@ impl Document {
                 &op.actor,
                 schema,
             ),
+            OperationKind::ResolveConflict {
+                entity_id,
+                field,
+                environment,
+                chosen_value,
+            } => self.apply_resolve_conflict(
+                entity_id,
+                field,
+                environment.as_deref(),
+                chosen_value,
+                &op.timestamp,
+                &op.actor,
+            ),
         }
     }
 
@@ -363,6 +376,110 @@ impl Document {
         };
 
         Ok(result)
+    }
+
+    fn apply_resolve_conflict(
+        &mut self,
+        entity_id: &EntityId,
+        field: &str,
+        environment: Option<&str>,
+        chosen_value: &crate::field::FieldValue,
+        timestamp: &HlcTimestamp,
+        actor: &crate::identity::ActorId,
+    ) -> Result<ApplyResult, OperationError> {
+        let entity = self
+            .entities
+            .get_mut(entity_id)
+            .ok_or_else(|| OperationError::EntityNotFound(entity_id.to_string()))?;
+
+        if let Some(env) = environment {
+            // Resolve override conflict
+            let existing = entity
+                .get_override(env, field)
+                .ok_or_else(|| OperationError::UnknownField {
+                    entity_type: entity.entity_type.clone(),
+                    field: field.to_string(),
+                })?;
+
+            // Only ReviewRegister can have conflicts
+            if let FieldState::Review(reg) = existing {
+                let resolved = reg.resolve(chosen_value.clone(), *timestamp, actor.clone());
+                entity.set_override(env, field, FieldState::Review(resolved));
+            } else {
+                return Err(OperationError::NotAConflict {
+                    entity_id: entity_id.to_string(),
+                    field: field.to_string(),
+                });
+            }
+        } else {
+            // Resolve base field conflict
+            let existing = entity
+                .get_field(field)
+                .ok_or_else(|| OperationError::UnknownField {
+                    entity_type: entity.entity_type.clone(),
+                    field: field.to_string(),
+                })?;
+
+            // Only ReviewRegister can have conflicts
+            if let FieldState::Review(reg) = existing {
+                let resolved = reg.resolve(chosen_value.clone(), *timestamp, actor.clone());
+                entity.set_field(field, FieldState::Review(resolved));
+            } else {
+                return Err(OperationError::NotAConflict {
+                    entity_id: entity_id.to_string(),
+                    field: field.to_string(),
+                });
+            }
+        }
+
+        Ok(ApplyResult::Applied)
+    }
+
+    /// Lists all current conflicts in the document.
+    ///
+    /// Scans all entities and fields (including overrides) for fields with
+    /// `ConflictState::NeedsReview`.
+    pub fn list_conflicts(&self) -> Vec<ConflictInfo> {
+        let mut conflicts = Vec::new();
+
+        for (entity_id, entity) in &self.entities {
+            // Skip tombstoned entities
+            if entity.is_tombstoned() {
+                continue;
+            }
+
+            // Check base fields
+            for (field_name, field_state) in &entity.fields {
+                if let crate::field::ConflictState::NeedsReview { ref contending_values } =
+                    field_state.conflict_state()
+                {
+                    conflicts.push(ConflictInfo {
+                        entity_id: entity_id.clone(),
+                        field: field_name.clone(),
+                        environment: None,
+                        contending_values: contending_values.clone(),
+                    });
+                }
+            }
+
+            // Check override fields
+            for (env_name, env_fields) in &entity.overrides {
+                for (field_name, field_state) in env_fields {
+                    if let crate::field::ConflictState::NeedsReview { ref contending_values } =
+                        field_state.conflict_state()
+                    {
+                        conflicts.push(ConflictInfo {
+                            entity_id: entity_id.clone(),
+                            field: field_name.clone(),
+                            environment: Some(env_name.clone()),
+                            contending_values: contending_values.clone(),
+                        });
+                    }
+                }
+            }
+        }
+
+        conflicts
     }
 
     /// Merges two documents, producing a new document and a list of conflicts.

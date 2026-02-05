@@ -88,6 +88,19 @@ pub async fn submit_operation(
             &actor.0,
             timestamp,
         ),
+        OperationDto::ResolveConflict {
+            entity_id,
+            field,
+            environment,
+            chosen_value,
+        } => Operation::resolve_conflict(
+            entity_id,
+            field,
+            environment,
+            json_to_field_value(&chosen_value),
+            &actor.0,
+            timestamp,
+        ),
     };
 
     if let Some(intent) = req.intent {
@@ -197,6 +210,19 @@ pub async fn batch_operations(
                 field,
                 environment,
                 json_to_field_value(&value),
+                &actor.0,
+                timestamp,
+            ),
+            OperationDto::ResolveConflict {
+                entity_id,
+                field,
+                environment,
+                chosen_value,
+            } => Operation::resolve_conflict(
+                entity_id,
+                field,
+                environment,
+                json_to_field_value(&chosen_value),
                 &actor.0,
                 timestamp,
             ),
