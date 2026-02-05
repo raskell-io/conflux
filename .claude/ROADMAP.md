@@ -132,6 +132,27 @@ Distributed Conflux for high availability and geo-distribution.
 
 ---
 
+## v0.6 — Bulk Operations ✅
+
+Efficient bulk import and update operations for large-scale config management.
+
+### Goals
+- [x] Directory import with recursive scanning
+- [x] File extension filtering for imports
+- [x] Glob pattern matching for file selection
+- [x] Filename prefix option for entity ID namespacing
+- [x] Bulk set command for multi-entity updates
+- [x] Entity pattern matching (glob-style)
+- [x] Dry run mode for bulk operations
+
+### Implementation
+- [x] `conflux import` enhanced with `--recursive`, `--extensions`, `--pattern`, `--use-filename-prefix`
+- [x] New `conflux bulk-set` command with pattern matching
+- [x] Entity type filtering for targeted bulk updates
+- [x] Preview mode (`--dry-run`) for safe operation planning
+
+---
+
 ## Future Considerations
 
 ### Format Support
