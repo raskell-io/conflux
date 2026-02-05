@@ -1,5 +1,6 @@
 //! Commit message builder for structured milestone commits.
 
+use conflux_core::entity::ConflictInfo;
 use conflux_core::{HlcTimestamp, Operation, OperationKind};
 
 /// Builder for structured milestone commit messages.
@@ -12,15 +13,21 @@ use conflux_core::{HlcTimestamp, Operation, OperationKind};
 ///   [<actor>] <entity>.<field>: <value> (<intent>)
 ///   ...
 ///
+/// Conflicts:
+///   <entity>.<field>: <count> contending values
+///   ...
+///
 /// Environments affected: <list>
 /// Causal range: hlc:<start> -> hlc:<end>
 /// Operations: <count>
+/// Conflicts: <count>
 /// ```
 #[derive(Debug, Clone)]
 pub struct CommitBuilder {
     message: String,
     operations: Vec<Operation>,
     environments: Vec<String>,
+    conflicts: Vec<ConflictInfo>,
     hlc_start: Option<HlcTimestamp>,
     hlc_end: Option<HlcTimestamp>,
 }
@@ -32,6 +39,7 @@ impl CommitBuilder {
             message: message.into(),
             operations: Vec::new(),
             environments: Vec::new(),
+            conflicts: Vec::new(),
             hlc_start: None,
             hlc_end: None,
         }
@@ -68,6 +76,12 @@ impl CommitBuilder {
         self
     }
 
+    /// Adds conflict information to the commit.
+    pub fn with_conflicts(mut self, conflicts: Vec<ConflictInfo>) -> Self {
+        self.conflicts = conflicts;
+        self
+    }
+
     /// Builds the structured commit message.
     pub fn build(self) -> String {
         let mut msg = format!("milestone: {}\n", self.message);
@@ -78,6 +92,25 @@ impl CommitBuilder {
             for op in &self.operations {
                 let line = format_operation(op);
                 msg.push_str(&format!("  {line}\n"));
+            }
+        }
+
+        // Conflicts section
+        if !self.conflicts.is_empty() {
+            msg.push_str("\nConflicts requiring review:\n");
+            for conflict in &self.conflicts {
+                let env_suffix = conflict
+                    .environment
+                    .as_ref()
+                    .map(|e| format!("@{e}"))
+                    .unwrap_or_default();
+                msg.push_str(&format!(
+                    "  {}.{}{}: {} contending values\n",
+                    conflict.entity_id,
+                    conflict.field,
+                    env_suffix,
+                    conflict.contending_values.len()
+                ));
             }
         }
 
@@ -96,6 +129,10 @@ impl CommitBuilder {
         }
 
         msg.push_str(&format!("Operations: {}\n", self.operations.len()));
+
+        if !self.conflicts.is_empty() {
+            msg.push_str(&format!("Conflicts: {}\n", self.conflicts.len()));
+        }
 
         msg
     }
@@ -219,5 +256,36 @@ mod tests {
             .build();
 
         assert!(msg.contains("Causal range: hlc:"));
+    }
+
+    #[test]
+    fn commit_message_with_conflicts() {
+        use conflux_core::entity::ConflictInfo;
+        use conflux_core::{EntityId, FieldValue};
+
+        let conflicts = vec![
+            ConflictInfo {
+                entity_id: EntityId::new("route.api"),
+                field: "weight".to_string(),
+                environment: None,
+                contending_values: vec![FieldValue::Int(80), FieldValue::Int(90)],
+            },
+            ConflictInfo {
+                entity_id: EntityId::new("route.web"),
+                field: "timeout".to_string(),
+                environment: Some("staging".to_string()),
+                contending_values: vec![FieldValue::Int(5000), FieldValue::Int(3000)],
+            },
+        ];
+
+        let msg = CommitBuilder::new("release with conflicts")
+            .with_conflicts(conflicts)
+            .build();
+
+        assert!(msg.contains("milestone: release with conflicts"));
+        assert!(msg.contains("Conflicts requiring review:"));
+        assert!(msg.contains("route.api.weight: 2 contending values"));
+        assert!(msg.contains("route.web.timeout@staging: 2 contending values"));
+        assert!(msg.contains("Conflicts: 2"));
     }
 }

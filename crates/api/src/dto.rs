@@ -410,3 +410,96 @@ pub fn operation_kind_to_log(kind: &OperationKind) -> OperationLogKind {
         },
     }
 }
+
+// ============================================================================
+// Webhook DTOs
+// ============================================================================
+
+/// Request to register a webhook.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RegisterWebhookRequest {
+    /// URL to deliver events to.
+    pub url: String,
+    /// Optional filter by entity ID prefix.
+    #[serde(default)]
+    pub entity_filter: Option<String>,
+    /// Optional filter by field name.
+    #[serde(default)]
+    pub field_filter: Option<String>,
+    /// Optional secret for HMAC signing.
+    #[serde(default)]
+    pub secret: Option<String>,
+    /// Event filter (all, state_changes, conflicts).
+    #[serde(default)]
+    pub event_filter: Option<String>,
+    /// Payload format (conflux, gitops).
+    #[serde(default)]
+    pub format: Option<String>,
+}
+
+/// Response after registering a webhook.
+#[derive(Debug, Clone, Serialize)]
+pub struct RegisterWebhookResponse {
+    /// The webhook ID.
+    pub id: Uuid,
+    /// The URL registered.
+    pub url: String,
+    /// Whether the webhook is enabled.
+    pub enabled: bool,
+}
+
+/// Webhook information returned by list and get.
+#[derive(Debug, Clone, Serialize)]
+pub struct WebhookDto {
+    /// Unique webhook ID.
+    pub id: Uuid,
+    /// URL to deliver events to.
+    pub url: String,
+    /// Entity filter (if set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub entity_filter: Option<String>,
+    /// Field filter (if set).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_filter: Option<String>,
+    /// Whether the webhook is enabled.
+    pub enabled: bool,
+    /// Event filter (all, state_changes, conflicts).
+    pub event_filter: String,
+    /// Payload format (conflux, gitops).
+    pub format: String,
+    /// Number of consecutive failures.
+    pub failure_count: u32,
+    /// Last error message (if any).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub last_error: Option<String>,
+}
+
+/// Response for listing webhooks.
+#[derive(Debug, Clone, Serialize)]
+pub struct ListWebhooksResponse {
+    pub webhooks: Vec<WebhookDto>,
+    pub total: usize,
+}
+
+/// Request to update a webhook.
+#[derive(Debug, Clone, Deserialize)]
+pub struct UpdateWebhookRequest {
+    /// New URL (optional).
+    #[serde(default)]
+    pub url: Option<String>,
+    /// Enable/disable the webhook (optional).
+    #[serde(default)]
+    pub enabled: Option<bool>,
+    /// New entity filter (optional).
+    #[serde(default)]
+    pub entity_filter: Option<String>,
+    /// New field filter (optional).
+    #[serde(default)]
+    pub field_filter: Option<String>,
+    /// New event filter (optional).
+    #[serde(default)]
+    pub event_filter: Option<String>,
+    /// New payload format (optional).
+    #[serde(default)]
+    pub format: Option<String>,
+}

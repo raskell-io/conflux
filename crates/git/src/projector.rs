@@ -62,6 +62,8 @@ pub struct MilestoneResult {
     pub hlc_start: Option<HlcTimestamp>,
     /// The causal range end.
     pub hlc_end: Option<HlcTimestamp>,
+    /// Number of conflicts in the document.
+    pub conflict_count: usize,
 }
 
 /// Orchestrates milestone projection to a git repository.
@@ -96,6 +98,9 @@ impl MilestoneProjector {
         message: &str,
         schema: &dyn SchemaInfo,
     ) -> Result<MilestoneResult, GitError> {
+        // Get conflicts from the document
+        let conflicts = document.list_conflicts();
+
         // Serialize to files for each environment with environment-resolved values
         let mut all_files = Vec::new();
         for env in environments {
@@ -105,8 +110,8 @@ impl MilestoneProjector {
             all_files.extend(files);
         }
 
-        // Write milestone metadata
-        let metadata = self.create_milestone_metadata(&operations, environments);
+        // Write milestone metadata (including conflicts)
+        let metadata = self.create_milestone_metadata(&operations, environments, &conflicts);
         all_files.push(OutputFile {
             path: ".conflux/milestone.json".to_string(),
             content: serde_json::to_string_pretty(&metadata)?,
@@ -116,10 +121,11 @@ impl MilestoneProjector {
         // Write files to disk
         let files_written = self.write_files(&all_files)?;
 
-        // Build commit message
+        // Build commit message (including conflicts)
         let commit_msg = CommitBuilder::new(message)
             .with_operations(operations.clone())
             .with_environments(environments.to_vec())
+            .with_conflicts(conflicts.clone())
             .build();
 
         // Commit to git
@@ -128,6 +134,7 @@ impl MilestoneProjector {
         // Determine causal range
         let hlc_start = operations.first().map(|op| op.timestamp);
         let hlc_end = operations.last().map(|op| op.timestamp);
+        let conflict_count = conflicts.len();
 
         Ok(MilestoneResult {
             commit_sha,
@@ -135,6 +142,7 @@ impl MilestoneProjector {
             operation_count: operations.len(),
             hlc_start,
             hlc_end,
+            conflict_count,
         })
     }
 
@@ -162,9 +170,23 @@ impl MilestoneProjector {
         &self,
         operations: &[Operation],
         environments: &[String],
+        conflicts: &[conflux_core::entity::ConflictInfo],
     ) -> serde_json::Value {
         let hlc_start = operations.first().map(|op| op.timestamp.to_string());
         let hlc_end = operations.last().map(|op| op.timestamp.to_string());
+
+        // Convert conflicts to serializable format
+        let conflict_details: Vec<serde_json::Value> = conflicts
+            .iter()
+            .map(|c| {
+                json!({
+                    "entity_id": c.entity_id.to_string(),
+                    "field": c.field,
+                    "environment": c.environment,
+                    "contending_value_count": c.contending_values.len()
+                })
+            })
+            .collect();
 
         json!({
             "format_version": 1,
@@ -173,6 +195,10 @@ impl MilestoneProjector {
             "hlc_range": {
                 "start": hlc_start,
                 "end": hlc_end
+            },
+            "conflicts": {
+                "count": conflicts.len(),
+                "details": conflict_details
             },
             "created_at": chrono::Utc::now().to_rfc3339()
         })

@@ -50,6 +50,11 @@
 //! | GET | `/v1/milestones/{id}` | Get milestone details |
 //! | GET | `/v1/log` | Operation log |
 //! | GET | `/v1/log/{entity}` | Entity operation log |
+//! | POST | `/v1/webhooks` | Register webhook |
+//! | GET | `/v1/webhooks` | List webhooks |
+//! | GET | `/v1/webhooks/{id}` | Get webhook |
+//! | PUT | `/v1/webhooks/{id}` | Update webhook |
+//! | DELETE | `/v1/webhooks/{id}` | Delete webhook |
 
 pub mod auth;
 pub mod dto;
@@ -65,4 +70,7 @@ pub use error::ApiError;
 pub use grpc::{pb, ConfluxGrpcService, StateChangeEvent};
 pub use server::{build_router, run_server, ServerConfig, DEFAULT_HTTP_PORT};
 pub use state::AppState;
-pub use webhook::{Webhook, WebhookConfig, WebhookManager};
+pub use webhook::{
+    ConflictPayload, GitOpsInvolvedObject, GitOpsMetadata, GitOpsPayload, GitOpsSource,
+    Webhook, WebhookConfig, WebhookEventFilter, WebhookFormat, WebhookManager, WebhookPayload,
+};

@@ -2,7 +2,7 @@
 
 use crate::handlers;
 use crate::state::AppState;
-use axum::routing::{get, post};
+use axum::routing::{delete, get, post, put};
 use axum::Router;
 use std::net::SocketAddr;
 use tokio::net::TcpListener;
@@ -69,6 +69,12 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/envs", get(handlers::list_environments))
         .route("/v1/envs/diff", get(handlers::diff_environments))
         .route("/v1/envs/{env_name}/state", get(handlers::get_environment_state))
+        // Webhooks
+        .route("/v1/webhooks", post(handlers::register_webhook))
+        .route("/v1/webhooks", get(handlers::list_webhooks))
+        .route("/v1/webhooks/{webhook_id}", get(handlers::get_webhook))
+        .route("/v1/webhooks/{webhook_id}", put(handlers::update_webhook))
+        .route("/v1/webhooks/{webhook_id}", delete(handlers::delete_webhook))
         // State
         .with_state(state)
 }

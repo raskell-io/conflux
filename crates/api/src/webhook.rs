@@ -1,12 +1,127 @@
 //! Webhook infrastructure for notifying external systems of state changes.
 
 use crate::grpc::StateChangeEvent;
+use conflux_core::entity::ConflictInfo;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::sync::Arc;
 use tokio::sync::{broadcast, RwLock};
 use tracing::{error, info, warn};
 use uuid::Uuid;
+
+/// Types of events that webhooks can subscribe to.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookEventFilter {
+    /// All events (default).
+    #[default]
+    All,
+    /// Only state change events (operations).
+    StateChanges,
+    /// Only conflict events.
+    Conflicts,
+}
+
+/// Format for webhook payloads.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
+#[serde(rename_all = "snake_case")]
+pub enum WebhookFormat {
+    /// Default Conflux format.
+    #[default]
+    Conflux,
+    /// GitOps-compatible format (Flux/ArgoCD).
+    GitOps,
+}
+
+/// GitOps-compatible event payload for Flux and ArgoCD reconcilers.
+///
+/// This format follows conventions expected by GitOps tools:
+/// - `kind` identifies the event type (similar to Kubernetes events)
+/// - `source` identifies the system
+/// - `involvedObject` contains entity/resource reference
+/// - `reason` and `message` describe what happened
+/// - `metadata` contains additional context
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitOpsPayload {
+    /// Event type identifier.
+    pub kind: String,
+
+    /// API version for compatibility.
+    pub api_version: String,
+
+    /// Source of the event.
+    pub source: GitOpsSource,
+
+    /// The object involved in the event.
+    pub involved_object: GitOpsInvolvedObject,
+
+    /// Short reason code (e.g., "Updated", "Created", "Conflict").
+    pub reason: String,
+
+    /// Human-readable description.
+    pub message: String,
+
+    /// Event metadata.
+    pub metadata: GitOpsMetadata,
+}
+
+/// Source information for GitOps events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitOpsSource {
+    /// Component that generated the event.
+    pub component: String,
+
+    /// Host/node identifier.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub host: Option<String>,
+}
+
+/// Reference to the involved object for GitOps events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitOpsInvolvedObject {
+    /// Kind of object (entity type).
+    pub kind: String,
+
+    /// Name/ID of the object.
+    pub name: String,
+
+    /// Namespace (environment).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub namespace: Option<String>,
+
+    /// Field path within the object.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub field_path: Option<String>,
+}
+
+/// Metadata for GitOps events.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct GitOpsMetadata {
+    /// Event timestamp (RFC3339).
+    pub timestamp: String,
+
+    /// Operation ID for tracing.
+    pub operation_id: String,
+
+    /// Actor who caused the event.
+    pub actor: String,
+
+    /// Actor class (human, operator, pipeline, system).
+    pub actor_class: String,
+
+    /// HLC timestamp for causal ordering.
+    pub hlc_timestamp: String,
+
+    /// Whether the event resulted in a conflict.
+    pub has_conflict: bool,
+
+    /// Labels for filtering/selection.
+    #[serde(skip_serializing_if = "HashMap::is_empty")]
+    pub labels: HashMap<String, String>,
+}
 
 /// Webhook configuration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -28,6 +143,14 @@ pub struct WebhookConfig {
 
     /// Whether the webhook is enabled.
     pub enabled: bool,
+
+    /// Event filter - which types of events to deliver.
+    #[serde(default)]
+    pub event_filter: WebhookEventFilter,
+
+    /// Payload format (conflux or gitops).
+    #[serde(default)]
+    pub format: WebhookFormat,
 }
 
 impl WebhookConfig {
@@ -40,6 +163,8 @@ impl WebhookConfig {
             field_filter: None,
             secret: None,
             enabled: true,
+            event_filter: WebhookEventFilter::All,
+            format: WebhookFormat::Conflux,
         }
     }
 
@@ -58,6 +183,18 @@ impl WebhookConfig {
     /// Sets a secret for HMAC signing.
     pub fn with_secret(mut self, secret: impl Into<String>) -> Self {
         self.secret = Some(secret.into());
+        self
+    }
+
+    /// Sets the event filter.
+    pub fn with_event_filter(mut self, filter: WebhookEventFilter) -> Self {
+        self.event_filter = filter;
+        self
+    }
+
+    /// Sets the payload format.
+    pub fn with_format(mut self, format: WebhookFormat) -> Self {
+        self.format = format;
         self
     }
 }
@@ -97,6 +234,32 @@ pub struct WebhookPayload {
 
     /// Whether this operation resulted in a conflict.
     pub has_conflict: bool,
+}
+
+/// A conflict notification payload.
+#[derive(Debug, Clone, Serialize)]
+pub struct ConflictPayload {
+    /// Event type - always "conflict_detected".
+    pub event_type: String,
+
+    /// Entity ID with the conflict.
+    pub entity_id: String,
+
+    /// Field with the conflict.
+    pub field: String,
+
+    /// Environment (if conflict is in an override).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
+
+    /// Number of contending values.
+    pub contending_value_count: usize,
+
+    /// The contending values as JSON.
+    pub contending_values: Vec<serde_json::Value>,
+
+    /// Timestamp when the conflict was detected.
+    pub detected_at: String,
 }
 
 /// Stored webhook entry.
@@ -202,6 +365,12 @@ impl WebhookManager {
                 continue;
             }
 
+            // Check event filter
+            match webhook.config.event_filter {
+                WebhookEventFilter::Conflicts => continue, // State changes filtered out
+                WebhookEventFilter::All | WebhookEventFilter::StateChanges => {}
+            }
+
             // Apply filters
             if let Some(ref filter) = webhook.config.entity_filter {
                 if !payload.entity_id.starts_with(filter) {
@@ -214,15 +383,24 @@ impl WebhookManager {
                 }
             }
 
-            // Deliver
+            // Deliver with the appropriate format
             let id = *id;
             let url = webhook.config.url.clone();
-            let payload = payload.clone();
             let client = self.client.clone();
+            let format = webhook.config.format;
+
+            // Convert to the appropriate payload format
+            let json_payload: serde_json::Value = match format {
+                WebhookFormat::Conflux => serde_json::to_value(&payload).unwrap_or_default(),
+                WebhookFormat::GitOps => {
+                    let gitops = Self::event_to_gitops_payload(event);
+                    serde_json::to_value(&gitops).unwrap_or_default()
+                }
+            };
 
             // Fire and forget - don't block other deliveries
             tokio::spawn(async move {
-                match client.post(&url).json(&payload).send().await {
+                match client.post(&url).json(&json_payload).send().await {
                     Ok(response) => {
                         if response.status().is_success() {
                             info!("Delivered webhook {} to {}", id, url);
@@ -240,6 +418,82 @@ impl WebhookManager {
                     }
                 }
             });
+        }
+    }
+
+    /// Delivers a conflict notification to all matching webhooks.
+    pub async fn deliver_conflict(&self, conflict: &ConflictInfo) {
+        let webhooks = self.webhooks.read().await;
+        let payload = Self::conflict_to_payload(conflict);
+
+        for (id, webhook) in webhooks.iter() {
+            if !webhook.config.enabled {
+                continue;
+            }
+
+            // Check event filter
+            match webhook.config.event_filter {
+                WebhookEventFilter::StateChanges => continue, // Conflicts filtered out
+                WebhookEventFilter::All | WebhookEventFilter::Conflicts => {}
+            }
+
+            // Apply entity filter
+            if let Some(ref filter) = webhook.config.entity_filter {
+                if !payload.entity_id.starts_with(filter) {
+                    continue;
+                }
+            }
+
+            // Apply field filter
+            if let Some(ref filter) = webhook.config.field_filter {
+                if &payload.field != filter {
+                    continue;
+                }
+            }
+
+            // Deliver
+            let id = *id;
+            let url = webhook.config.url.clone();
+            let payload = payload.clone();
+            let client = self.client.clone();
+
+            tokio::spawn(async move {
+                match client.post(&url).json(&payload).send().await {
+                    Ok(response) => {
+                        if response.status().is_success() {
+                            info!("Delivered conflict webhook {} to {}", id, url);
+                        } else {
+                            warn!(
+                                "Conflict webhook {} delivery failed: {} {}",
+                                id,
+                                response.status(),
+                                response.text().await.unwrap_or_default()
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        error!("Conflict webhook {} delivery error: {}", id, e);
+                    }
+                }
+            });
+        }
+    }
+
+    fn conflict_to_payload(conflict: &ConflictInfo) -> ConflictPayload {
+        let contending_values: Vec<serde_json::Value> = conflict
+            .contending_values
+            .iter()
+            .map(|v| serde_json::to_value(v).unwrap_or(serde_json::Value::Null))
+            .collect();
+
+        ConflictPayload {
+            event_type: "conflict_detected".to_string(),
+            entity_id: conflict.entity_id.to_string(),
+            field: conflict.field.clone(),
+            environment: conflict.environment.clone(),
+            contending_value_count: conflict.contending_values.len(),
+            contending_values,
+            detected_at: chrono::Utc::now().to_rfc3339(),
         }
     }
 
@@ -302,6 +556,120 @@ impl WebhookManager {
             intent: op.intent.clone(),
             operation_id: op.id.to_string(),
             has_conflict: event.has_conflict,
+        }
+    }
+
+    fn event_to_gitops_payload(event: &StateChangeEvent) -> GitOpsPayload {
+        use conflux_core::OperationKind;
+
+        let op = &event.operation;
+        let (reason, message, entity_type, entity_id, field_path, namespace) = match &op.kind {
+            OperationKind::SetField {
+                entity_id, field, value, ..
+            } => (
+                "Updated",
+                format!("Field '{}' updated to {:?}", field, value),
+                "Entity",
+                entity_id.to_string(),
+                Some(format!(".{}", field)),
+                None,
+            ),
+            OperationKind::InsertEntity {
+                entity_id,
+                entity_type,
+                ..
+            } => (
+                "Created",
+                format!("Entity '{}' of type '{}' created", entity_id, entity_type),
+                entity_type.as_str(),
+                entity_id.to_string(),
+                None,
+                None,
+            ),
+            OperationKind::RemoveEntity { entity_id } => (
+                "Deleted",
+                format!("Entity '{}' deleted", entity_id),
+                "Entity",
+                entity_id.to_string(),
+                None,
+                None,
+            ),
+            OperationKind::MoveEntity {
+                entity_id,
+                new_parent_id,
+                ..
+            } => (
+                "Moved",
+                format!("Entity '{}' moved to '{}'", entity_id, new_parent_id),
+                "Entity",
+                entity_id.to_string(),
+                None,
+                None,
+            ),
+            OperationKind::SetOverride {
+                entity_id,
+                field,
+                environment,
+                value,
+            } => (
+                "OverrideUpdated",
+                format!("Field '{}' override for '{}' set to {:?}", field, environment, value),
+                "Entity",
+                entity_id.to_string(),
+                Some(format!(".{}", field)),
+                Some(environment.clone()),
+            ),
+            OperationKind::ResolveConflict {
+                entity_id,
+                field,
+                environment,
+                ..
+            } => {
+                let env_str = environment.as_ref().map(|e| format!(" in {}", e)).unwrap_or_default();
+                (
+                    "ConflictResolved",
+                    format!("Conflict on field '{}'{} resolved", field, env_str),
+                    "Entity",
+                    entity_id.to_string(),
+                    Some(format!(".{}", field)),
+                    environment.clone(),
+                )
+            }
+        };
+
+        let mut labels = HashMap::new();
+        labels.insert("app.kubernetes.io/managed-by".to_string(), "conflux".to_string());
+        if let Some(intent) = &op.intent {
+            labels.insert("conflux.io/intent".to_string(), intent.clone());
+        }
+        if event.has_conflict {
+            labels.insert("conflux.io/has-conflict".to_string(), "true".to_string());
+        }
+
+        GitOpsPayload {
+            kind: "ConfluxEvent".to_string(),
+            api_version: "conflux.io/v1".to_string(),
+            source: GitOpsSource {
+                component: "conflux".to_string(),
+                host: None,
+            },
+            involved_object: GitOpsInvolvedObject {
+                kind: entity_type.to_string(),
+                name: entity_id,
+                namespace,
+                field_path,
+            },
+            reason: reason.to_string(),
+            message,
+            metadata: GitOpsMetadata {
+                timestamp: chrono::Utc::now().to_rfc3339(),
+                operation_id: op.id.to_string(),
+                actor: op.actor.id.clone(),
+                actor_class: op.actor.class.to_string(),
+                hlc_timestamp: op.timestamp.to_string(),
+                has_conflict: event.has_conflict,
+                labels,
+            },
         }
     }
 }

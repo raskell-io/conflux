@@ -1,5 +1,6 @@
 //! Application state shared across handlers.
 
+use crate::webhook::WebhookManager;
 use conflux_core::{Clock, Document};
 use conflux_git::{MilestoneProjector, ProjectorConfig};
 use conflux_schema::Schema;
@@ -22,6 +23,8 @@ pub struct AppState {
     pub projector: Option<Arc<MilestoneProjector>>,
     /// Document ID for this instance.
     pub document_id: String,
+    /// Webhook manager for event delivery.
+    pub webhooks: Arc<WebhookManager>,
 }
 
 impl AppState {
@@ -34,6 +37,7 @@ impl AppState {
             store: Arc::new(Mutex::new(store)),
             projector: None,
             document_id: document_id.into(),
+            webhooks: Arc::new(WebhookManager::new()),
         }
     }
 
@@ -51,6 +55,7 @@ impl AppState {
             store: Arc::new(Mutex::new(store)),
             projector,
             document_id: document_id.into(),
+            webhooks: Arc::new(WebhookManager::new()),
         }
     }
 
@@ -58,6 +63,12 @@ impl AppState {
     pub fn with_git_repo(mut self, repo_path: impl Into<PathBuf>) -> Self {
         let config = ProjectorConfig::new(repo_path);
         self.projector = Some(Arc::new(MilestoneProjector::new(config)));
+        self
+    }
+
+    /// Configures a custom webhook manager.
+    pub fn with_webhook_manager(mut self, webhooks: Arc<WebhookManager>) -> Self {
+        self.webhooks = webhooks;
         self
     }
 }

@@ -79,8 +79,8 @@ Human-in-the-loop conflict resolution for `review` merge strategy fields.
 - [x] `conflux resolve` command for human conflict resolution
 - [x] `ResolveConflict` operation type
 - [x] `Document.list_conflicts()` method
-- [ ] Conflict metadata in milestone commits
-- [ ] Conflict notification hooks
+- [x] Conflict metadata in milestone commits
+- [x] Conflict notification hooks
 
 ---
 
@@ -95,14 +95,15 @@ Push-based state updates for machine actors and reconcilers.
 - [x] `StateChangeEvent` broadcast channel
 - [x] Webhook infrastructure (`WebhookManager`)
 - [x] `conflux watch` CLI command
-- [ ] Event format for GitOps reconcilers (Flux, ArgoCD compatible)
-- [ ] Webhook registration HTTP API endpoints
+- [x] Event format for GitOps reconcilers (Flux, ArgoCD compatible)
+- [x] Webhook registration HTTP API endpoints
 
 ### Current Status
-- [x] HTTP REST API functional (11 endpoints)
+- [x] HTTP REST API functional (16 endpoints including webhook management)
 - [x] gRPC service implementation with tonic
 - [x] Webhook manager for HTTP callback delivery
 - [x] Real-time state watching (CLI + gRPC streaming)
+- [x] GitOps-compatible event format for Flux/ArgoCD
 
 ---
 

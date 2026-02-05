@@ -6,16 +6,19 @@ use crate::dto::{
     BatchOperationResponse, ConflictInfoDto, CreateMilestoneRequest, CreateMilestoneResponse,
     DocumentStateResponse, EntityStateResponse, EnvDiffParams, EnvironmentDiffResponse,
     EnvironmentEntityStateResponse, EnvironmentStateResponse, EnvironmentsResponse, FieldDiff,
-    HealthResponse, LogQueryParams, MilestoneSummary, OperationDto, OperationLogEntry,
-    OperationLogResponse, SubmitOperationRequest, SubmitOperationResponse,
+    HealthResponse, ListWebhooksResponse, LogQueryParams, MilestoneSummary, OperationDto,
+    OperationLogEntry, OperationLogResponse, RegisterWebhookRequest, RegisterWebhookResponse,
+    SubmitOperationRequest, SubmitOperationResponse, UpdateWebhookRequest, WebhookDto,
 };
-use conflux_core::schema_info::SchemaInfo;
 use crate::error::ApiError;
 use crate::state::AppState;
+use crate::webhook::{WebhookConfig, WebhookEventFilter, WebhookFormat};
 use axum::extract::{Path, Query, State};
 use axum::Json;
+use conflux_core::schema_info::SchemaInfo;
 use conflux_core::{ApplyResult, EntityId, Operation};
 use conflux_store::OperationQuery;
+use uuid::Uuid;
 
 // ============================================================================
 // Health
@@ -758,4 +761,208 @@ fn find_field_source(
     }
     // Fall back to base
     "base".to_string()
+}
+
+// ============================================================================
+// Webhooks
+// ============================================================================
+
+/// Register a new webhook.
+pub async fn register_webhook(
+    State(state): State<AppState>,
+    Json(req): Json<RegisterWebhookRequest>,
+) -> Result<Json<RegisterWebhookResponse>, ApiError> {
+    let mut config = WebhookConfig::new(req.url.clone());
+
+    if let Some(filter) = req.entity_filter {
+        config = config.with_entity_filter(filter);
+    }
+    if let Some(filter) = req.field_filter {
+        config = config.with_field_filter(filter);
+    }
+    if let Some(secret) = req.secret {
+        config = config.with_secret(secret);
+    }
+    if let Some(event_filter) = req.event_filter {
+        let filter = match event_filter.to_lowercase().as_str() {
+            "state_changes" => WebhookEventFilter::StateChanges,
+            "conflicts" => WebhookEventFilter::Conflicts,
+            _ => WebhookEventFilter::All,
+        };
+        config = config.with_event_filter(filter);
+    }
+    if let Some(format) = req.format {
+        let fmt = match format.to_lowercase().as_str() {
+            "gitops" => WebhookFormat::GitOps,
+            _ => WebhookFormat::Conflux,
+        };
+        config = config.with_format(fmt);
+    }
+
+    let id = state.webhooks.register(config).await;
+
+    Ok(Json(RegisterWebhookResponse {
+        id,
+        url: req.url,
+        enabled: true,
+    }))
+}
+
+/// List all webhooks.
+pub async fn list_webhooks(
+    State(state): State<AppState>,
+) -> Result<Json<ListWebhooksResponse>, ApiError> {
+    let webhooks = state.webhooks.list().await;
+    let total = webhooks.len();
+
+    let dtos: Vec<WebhookDto> = webhooks
+        .into_iter()
+        .map(|w| WebhookDto {
+            id: w.config.id,
+            url: w.config.url,
+            entity_filter: w.config.entity_filter,
+            field_filter: w.config.field_filter,
+            enabled: w.config.enabled,
+            event_filter: match w.config.event_filter {
+                WebhookEventFilter::All => "all".to_string(),
+                WebhookEventFilter::StateChanges => "state_changes".to_string(),
+                WebhookEventFilter::Conflicts => "conflicts".to_string(),
+            },
+            format: match w.config.format {
+                WebhookFormat::Conflux => "conflux".to_string(),
+                WebhookFormat::GitOps => "gitops".to_string(),
+            },
+            failure_count: w.failure_count,
+            last_error: w.last_error,
+        })
+        .collect();
+
+    Ok(Json(ListWebhooksResponse {
+        webhooks: dtos,
+        total,
+    }))
+}
+
+/// Get a webhook by ID.
+pub async fn get_webhook(
+    State(state): State<AppState>,
+    Path(webhook_id): Path<String>,
+) -> Result<Json<WebhookDto>, ApiError> {
+    let id = Uuid::parse_str(&webhook_id)
+        .map_err(|_| ApiError::EntityNotFound(format!("invalid webhook id: {webhook_id}")))?;
+
+    let webhook = state
+        .webhooks
+        .get(&id)
+        .await
+        .ok_or_else(|| ApiError::EntityNotFound(format!("webhook {webhook_id}")))?;
+
+    Ok(Json(WebhookDto {
+        id: webhook.config.id,
+        url: webhook.config.url,
+        entity_filter: webhook.config.entity_filter,
+        field_filter: webhook.config.field_filter,
+        enabled: webhook.config.enabled,
+        event_filter: match webhook.config.event_filter {
+            WebhookEventFilter::All => "all".to_string(),
+            WebhookEventFilter::StateChanges => "state_changes".to_string(),
+            WebhookEventFilter::Conflicts => "conflicts".to_string(),
+        },
+        format: match webhook.config.format {
+            WebhookFormat::Conflux => "conflux".to_string(),
+            WebhookFormat::GitOps => "gitops".to_string(),
+        },
+        failure_count: webhook.failure_count,
+        last_error: webhook.last_error,
+    }))
+}
+
+/// Delete a webhook.
+pub async fn delete_webhook(
+    State(state): State<AppState>,
+    Path(webhook_id): Path<String>,
+) -> Result<Json<serde_json::Value>, ApiError> {
+    let id = Uuid::parse_str(&webhook_id)
+        .map_err(|_| ApiError::EntityNotFound(format!("invalid webhook id: {webhook_id}")))?;
+
+    let removed = state.webhooks.unregister(&id).await;
+
+    if removed {
+        Ok(Json(serde_json::json!({
+            "deleted": true,
+            "id": webhook_id
+        })))
+    } else {
+        Err(ApiError::EntityNotFound(format!("webhook {webhook_id}")))
+    }
+}
+
+/// Update a webhook (placeholder - updates require re-registration for now).
+pub async fn update_webhook(
+    State(state): State<AppState>,
+    Path(webhook_id): Path<String>,
+    Json(req): Json<UpdateWebhookRequest>,
+) -> Result<Json<WebhookDto>, ApiError> {
+    let id = Uuid::parse_str(&webhook_id)
+        .map_err(|_| ApiError::EntityNotFound(format!("invalid webhook id: {webhook_id}")))?;
+
+    // Get existing webhook
+    let webhook = state
+        .webhooks
+        .get(&id)
+        .await
+        .ok_or_else(|| ApiError::EntityNotFound(format!("webhook {webhook_id}")))?;
+
+    // Build updated config
+    let mut config = webhook.config.clone();
+    config.id = id; // Preserve the ID
+
+    if let Some(url) = req.url {
+        config.url = url;
+    }
+    if let Some(enabled) = req.enabled {
+        config.enabled = enabled;
+    }
+    if let Some(filter) = req.entity_filter {
+        config.entity_filter = if filter.is_empty() { None } else { Some(filter) };
+    }
+    if let Some(filter) = req.field_filter {
+        config.field_filter = if filter.is_empty() { None } else { Some(filter) };
+    }
+    if let Some(event_filter) = req.event_filter {
+        config.event_filter = match event_filter.to_lowercase().as_str() {
+            "state_changes" => WebhookEventFilter::StateChanges,
+            "conflicts" => WebhookEventFilter::Conflicts,
+            _ => WebhookEventFilter::All,
+        };
+    }
+    if let Some(format) = req.format {
+        config.format = match format.to_lowercase().as_str() {
+            "gitops" => WebhookFormat::GitOps,
+            _ => WebhookFormat::Conflux,
+        };
+    }
+
+    // Unregister old, register updated
+    state.webhooks.unregister(&id).await;
+    state.webhooks.register(config.clone()).await;
+
+    Ok(Json(WebhookDto {
+        id: config.id,
+        url: config.url,
+        entity_filter: config.entity_filter,
+        field_filter: config.field_filter,
+        enabled: config.enabled,
+        event_filter: match config.event_filter {
+            WebhookEventFilter::All => "all".to_string(),
+            WebhookEventFilter::StateChanges => "state_changes".to_string(),
+            WebhookEventFilter::Conflicts => "conflicts".to_string(),
+        },
+        format: match config.format {
+            WebhookFormat::Conflux => "conflux".to_string(),
+            WebhookFormat::GitOps => "gitops".to_string(),
+        },
+        failure_count: 0,
+        last_error: None,
+    }))
 }
