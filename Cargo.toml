@@ -83,6 +83,8 @@ chrono = { version = "0.4", features = ["serde"] }
 dashmap = "6.1"
 parking_lot = "0.12"
 bytes = "1.9"
+whoami = "1.5"
+tempfile = "3.16"
 
 [profile.release]
 opt-level = 3

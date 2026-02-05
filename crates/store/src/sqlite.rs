@@ -364,7 +364,10 @@ impl SqliteStore {
     /// # Errors
     ///
     /// Returns `StoreError::NotFound` if no milestones exist.
-    pub fn latest_milestone(&self, document_id: &str) -> Result<StoredMilestone, StoreError> {
+    pub fn latest_milestone(
+        &self,
+        document_id: &str,
+    ) -> Result<Option<StoredMilestone>, StoreError> {
         let mut stmt = self.conn.prepare(
             "SELECT id, git_commit, hlc_range_start, hlc_range_end, message, created_at
              FROM milestones
@@ -398,7 +401,7 @@ impl SqliteStore {
                     serde_json::from_value(serde_json::Value::String(hlc_range_start))?;
                 let hlc_range_end: HlcTimestamp =
                     serde_json::from_value(serde_json::Value::String(hlc_range_end))?;
-                Ok(StoredMilestone {
+                Ok(Some(StoredMilestone {
                     id,
                     document_id: document_id.to_string(),
                     git_commit,
@@ -406,11 +409,9 @@ impl SqliteStore {
                     hlc_range_end,
                     message,
                     created_at,
-                })
+                }))
             }
-            Err(rusqlite::Error::QueryReturnedNoRows) => Err(StoreError::NotFound(format!(
-                "milestone for document {document_id}"
-            ))),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
             Err(e) => Err(StoreError::Database(e)),
         }
     }
@@ -753,7 +754,7 @@ mod tests {
             )
             .unwrap();
 
-        let latest = store.latest_milestone("doc-1").unwrap();
+        let latest = store.latest_milestone("doc-1").unwrap().unwrap();
         assert_eq!(latest.message.as_deref(), Some("second milestone"));
         assert_eq!(latest.git_commit.as_deref(), Some("def456"));
 

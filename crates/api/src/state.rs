@@ -37,6 +37,23 @@ impl AppState {
         }
     }
 
+    /// Creates a new application state with an optional projector.
+    pub fn new_with_projector(
+        schema: Schema,
+        store: SqliteStore,
+        document_id: impl Into<String>,
+        projector: Option<Arc<MilestoneProjector>>,
+    ) -> Self {
+        Self {
+            document: Arc::new(RwLock::new(Document::new())),
+            clock: Arc::new(Clock::new()),
+            schema: Arc::new(schema),
+            store: Arc::new(Mutex::new(store)),
+            projector,
+            document_id: document_id.into(),
+        }
+    }
+
     /// Configures git milestone projection.
     pub fn with_git_repo(mut self, repo_path: impl Into<PathBuf>) -> Self {
         let config = ProjectorConfig::new(repo_path);
