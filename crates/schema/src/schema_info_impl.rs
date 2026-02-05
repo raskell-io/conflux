@@ -11,6 +11,10 @@ use std::collections::HashMap;
 /// the `SchemaInfo` trait.
 pub struct SchemaInfoAdapter {
     fields: HashMap<String, HashMap<String, FieldSchema>>,
+    /// Base environment name.
+    base_env: Option<String>,
+    /// Environment inheritance: maps child env -> parent env.
+    env_parents: HashMap<String, String>,
 }
 
 impl SchemaInfoAdapter {
@@ -33,7 +37,22 @@ impl SchemaInfoAdapter {
             fields.insert(entity_name.clone(), entity_fields);
         }
 
-        Self { fields }
+        // Extract environment configuration
+        let (base_env, env_parents) = if let Some(ref envs) = schema.environments {
+            let mut parents = HashMap::new();
+            for overlay in &envs.overlays {
+                parents.insert(overlay.name.clone(), overlay.inherits.clone());
+            }
+            (Some(envs.base.clone()), parents)
+        } else {
+            (None, HashMap::new())
+        };
+
+        Self {
+            fields,
+            base_env,
+            env_parents,
+        }
     }
 }
 
@@ -50,6 +69,14 @@ impl SchemaInfo for SchemaInfoAdapter {
 
     fn has_entity_type(&self, entity_type: &str) -> bool {
         self.fields.contains_key(entity_type)
+    }
+
+    fn base_environment(&self) -> Option<&str> {
+        self.base_env.as_deref()
+    }
+
+    fn environment_parent(&self, env: &str) -> Option<&str> {
+        self.env_parents.get(env).map(|s| s.as_str())
     }
 }
 

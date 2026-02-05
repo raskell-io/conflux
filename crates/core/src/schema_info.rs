@@ -33,6 +33,21 @@ pub trait SchemaInfo {
 
     /// Returns whether an entity type is defined in the schema.
     fn has_entity_type(&self, entity_type: &str) -> bool;
+
+    /// Returns the base environment name (the root of the inheritance chain).
+    fn base_environment(&self) -> Option<&str> {
+        None
+    }
+
+    /// Returns the parent environment for inheritance lookup.
+    /// Returns None if the environment is the base or doesn't exist.
+    fn environment_parent(&self, env: &str) -> Option<&str>;
+
+    /// Returns whether an environment is defined in the schema.
+    fn has_environment(&self, env: &str) -> bool {
+        self.base_environment().map_or(false, |base| base == env)
+            || self.environment_parent(env).is_some()
+    }
 }
 
 /// A simple HashMap-backed schema info for testing.
@@ -41,11 +56,27 @@ pub trait SchemaInfo {
 #[derive(Debug, Clone, Default)]
 pub struct SimpleSchemaInfo {
     fields: HashMap<String, HashMap<String, FieldSchema>>,
+    /// Base environment name.
+    base_env: Option<String>,
+    /// Environment inheritance: maps child env -> parent env.
+    env_parents: HashMap<String, String>,
 }
 
 impl SimpleSchemaInfo {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    /// Sets the base environment.
+    pub fn set_base_environment(&mut self, env: impl Into<String>) -> &mut Self {
+        self.base_env = Some(env.into());
+        self
+    }
+
+    /// Adds an environment overlay with inheritance.
+    pub fn add_environment(&mut self, env: impl Into<String>, inherits: impl Into<String>) -> &mut Self {
+        self.env_parents.insert(env.into(), inherits.into());
+        self
     }
 
     /// Adds a field definition for an entity type.
@@ -108,6 +139,14 @@ impl SchemaInfo for SimpleSchemaInfo {
 
     fn has_entity_type(&self, entity_type: &str) -> bool {
         self.fields.contains_key(entity_type)
+    }
+
+    fn base_environment(&self) -> Option<&str> {
+        self.base_env.as_deref()
+    }
+
+    fn environment_parent(&self, env: &str) -> Option<&str> {
+        self.env_parents.get(env).map(|s| s.as_str())
     }
 }
 

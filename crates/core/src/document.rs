@@ -42,12 +42,41 @@ impl Document {
         self.entities.get_mut(id)
     }
 
-    /// Gets a field value from an entity.
+    /// Gets a field value from an entity (base value, no environment resolution).
     pub fn get_field(&self, entity_id: &EntityId, field: &str) -> Option<crate::field::FieldValue> {
         self.entities
             .get(entity_id)?
             .get_field(field)
             .map(|state| state.value())
+    }
+
+    /// Gets a field value for a specific environment, walking up the inheritance chain.
+    ///
+    /// Resolution order:
+    /// 1. Check for override in the specified environment
+    /// 2. Walk up to parent environments via inheritance chain
+    /// 3. Fall back to base field value
+    pub fn get_field_for_env(
+        &self,
+        entity_id: &EntityId,
+        field: &str,
+        env: &str,
+        schema: &dyn SchemaInfo,
+    ) -> Option<crate::field::FieldValue> {
+        let entity = self.entities.get(entity_id)?;
+
+        // Walk up the environment inheritance chain
+        let mut current_env = Some(env);
+        while let Some(e) = current_env {
+            if let Some(state) = entity.get_override(e, field) {
+                return Some(state.value());
+            }
+            // Move to parent environment
+            current_env = schema.environment_parent(e);
+        }
+
+        // Fall back to base field value
+        entity.get_field(field).map(|state| state.value())
     }
 
     /// Applies an operation to this document.
@@ -99,9 +128,20 @@ impl Document {
                 &op.timestamp,
                 &op.actor,
             ),
-            OperationKind::SetOverride { .. } => Err(OperationError::NotImplemented(
-                "SetOverride deferred for v0.1".into(),
-            )),
+            OperationKind::SetOverride {
+                entity_id,
+                field,
+                environment,
+                value,
+            } => self.apply_set_override(
+                entity_id,
+                field,
+                environment,
+                value,
+                &op.timestamp,
+                &op.actor,
+                schema,
+            ),
         }
     }
 
@@ -142,6 +182,7 @@ impl Document {
                 ApplyResult::Conflict(ConflictInfo {
                     entity_id: entity_id.clone(),
                     field: field.to_string(),
+                    environment: None,
                     contending_values,
                 })
             } else {
@@ -262,6 +303,66 @@ impl Document {
         let _ = timestamp; // Used for future causal ordering
 
         Ok(ApplyResult::Applied)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn apply_set_override(
+        &mut self,
+        entity_id: &EntityId,
+        field: &str,
+        environment: &str,
+        value: &crate::field::FieldValue,
+        timestamp: &HlcTimestamp,
+        actor: &crate::identity::ActorId,
+        schema: &dyn SchemaInfo,
+    ) -> Result<ApplyResult, OperationError> {
+        // Verify entity exists
+        let entity = self
+            .entities
+            .get_mut(entity_id)
+            .ok_or_else(|| OperationError::EntityNotFound(entity_id.to_string()))?;
+
+        // Verify field exists in schema
+        let field_schema = schema
+            .field_schema(&entity.entity_type, field)
+            .ok_or_else(|| OperationError::UnknownField {
+                entity_type: entity.entity_type.clone(),
+                field: field.to_string(),
+            })?;
+
+        // Verify environment exists in schema
+        if !schema.has_environment(environment) {
+            return Err(OperationError::UnknownEnvironment(environment.to_string()));
+        }
+
+        let incoming = FieldState::new(
+            value.clone(),
+            *timestamp,
+            actor.clone(),
+            field_schema.merge_strategy,
+        );
+
+        let result = if let Some(existing) = entity.get_override(environment, field) {
+            let merged = existing.merge(&incoming);
+            let conflict_state = merged.conflict_state();
+            entity.set_override(environment, field, merged);
+
+            if let crate::field::ConflictState::NeedsReview { contending_values } = conflict_state {
+                ApplyResult::Conflict(ConflictInfo {
+                    entity_id: entity_id.clone(),
+                    field: field.to_string(),
+                    environment: Some(environment.to_string()),
+                    contending_values,
+                })
+            } else {
+                ApplyResult::Applied
+            }
+        } else {
+            entity.set_override(environment, field, incoming);
+            ApplyResult::Applied
+        };
+
+        Ok(result)
     }
 
     /// Merges two documents, producing a new document and a list of conflicts.
@@ -676,5 +777,217 @@ mod tests {
             .children
             .values()
             .any(|id| id == &EntityId::new("child")));
+    }
+
+    fn test_schema_with_envs() -> SimpleSchemaInfo {
+        let mut schema = test_schema();
+        schema
+            .set_base_environment("production")
+            .add_environment("staging", "production")
+            .add_environment("development", "staging");
+        schema
+    }
+
+    #[test]
+    fn apply_set_override() {
+        let schema = test_schema_with_envs();
+        let clock = Clock::new();
+        let actor = make_actor("alice");
+        let mut doc = Document::new();
+
+        let entity_id = EntityId::new("route.api");
+        let ts = clock.new_timestamp();
+
+        // Insert entity
+        doc.apply(
+            &Operation::insert_entity(entity_id.clone(), "route", None, None, &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Set base field
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_field(entity_id.clone(), "weight", FieldValue::Int(80), &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Set staging override
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_override(
+                entity_id.clone(),
+                "weight",
+                "staging",
+                FieldValue::Int(50),
+                &actor,
+                ts,
+            ),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Base field still returns 80
+        assert_eq!(doc.get_field(&entity_id, "weight"), Some(FieldValue::Int(80)));
+
+        // Staging returns override
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "staging", &schema),
+            Some(FieldValue::Int(50))
+        );
+
+        // Production returns base (no override)
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "production", &schema),
+            Some(FieldValue::Int(80))
+        );
+    }
+
+    #[test]
+    fn environment_inheritance_chain() {
+        let schema = test_schema_with_envs();
+        let clock = Clock::new();
+        let actor = make_actor("alice");
+        let mut doc = Document::new();
+
+        let entity_id = EntityId::new("route.api");
+        let ts = clock.new_timestamp();
+
+        doc.apply(
+            &Operation::insert_entity(entity_id.clone(), "route", None, None, &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Set base field
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_field(entity_id.clone(), "weight", FieldValue::Int(100), &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Set staging override
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_override(
+                entity_id.clone(),
+                "weight",
+                "staging",
+                FieldValue::Int(50),
+                &actor,
+                ts,
+            ),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Development inherits from staging, so it should get 50
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "development", &schema),
+            Some(FieldValue::Int(50))
+        );
+
+        // Staging returns its own override
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "staging", &schema),
+            Some(FieldValue::Int(50))
+        );
+
+        // Production returns base
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "production", &schema),
+            Some(FieldValue::Int(100))
+        );
+    }
+
+    #[test]
+    fn development_override_shadows_staging() {
+        let schema = test_schema_with_envs();
+        let clock = Clock::new();
+        let actor = make_actor("alice");
+        let mut doc = Document::new();
+
+        let entity_id = EntityId::new("route.api");
+        let ts = clock.new_timestamp();
+
+        doc.apply(
+            &Operation::insert_entity(entity_id.clone(), "route", None, None, &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Set base, staging, and development overrides
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_field(entity_id.clone(), "weight", FieldValue::Int(100), &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_override(entity_id.clone(), "weight", "staging", FieldValue::Int(50), &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        let ts = clock.new_timestamp();
+        doc.apply(
+            &Operation::set_override(entity_id.clone(), "weight", "development", FieldValue::Int(10), &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        // Development returns its own override (10), not staging's (50)
+        assert_eq!(
+            doc.get_field_for_env(&entity_id, "weight", "development", &schema),
+            Some(FieldValue::Int(10))
+        );
+    }
+
+    #[test]
+    fn set_override_unknown_environment_fails() {
+        let schema = test_schema_with_envs();
+        let clock = Clock::new();
+        let actor = make_actor("alice");
+        let mut doc = Document::new();
+
+        let entity_id = EntityId::new("route.api");
+        let ts = clock.new_timestamp();
+
+        doc.apply(
+            &Operation::insert_entity(entity_id.clone(), "route", None, None, &actor, ts),
+            &schema,
+            &clock,
+        )
+        .unwrap();
+
+        let ts = clock.new_timestamp();
+        let result = doc.apply(
+            &Operation::set_override(
+                entity_id.clone(),
+                "weight",
+                "nonexistent",
+                FieldValue::Int(50),
+                &actor,
+                ts,
+            ),
+            &schema,
+            &clock,
+        );
+
+        assert!(matches!(result, Err(OperationError::UnknownEnvironment(_))));
     }
 }

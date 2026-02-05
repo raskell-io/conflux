@@ -21,6 +21,9 @@ pub struct Entity {
     pub entity_type: String,
     /// Per-field CRDT state, keyed by field name.
     pub fields: BTreeMap<String, FieldState>,
+    /// Per-environment field overrides: env_name -> field_name -> FieldState.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub overrides: BTreeMap<String, BTreeMap<String, FieldState>>,
     /// Parent entity ID, if this entity is a child.
     pub parent_id: Option<EntityId>,
     /// Child entities, keyed by fractional position string for ordering.
@@ -41,6 +44,7 @@ impl Entity {
             id,
             entity_type: entity_type.into(),
             fields: BTreeMap::new(),
+            overrides: BTreeMap::new(),
             parent_id: None,
             children: BTreeMap::new(),
             tombstone: LwwRegister::new(false, timestamp, actor),
@@ -62,6 +66,19 @@ impl Entity {
         self.fields.get(name)
     }
 
+    /// Sets an environment-specific field override.
+    pub fn set_override(&mut self, env: impl Into<String>, name: impl Into<String>, state: FieldState) {
+        self.overrides
+            .entry(env.into())
+            .or_default()
+            .insert(name.into(), state);
+    }
+
+    /// Gets the CRDT state for a field override in a specific environment.
+    pub fn get_override(&self, env: &str, name: &str) -> Option<&FieldState> {
+        self.overrides.get(env)?.get(name)
+    }
+
     /// Adds a child entity at the given position.
     pub fn add_child(&mut self, position: impl Into<String>, child_id: EntityId) {
         self.children.insert(position.into(), child_id);
@@ -75,7 +92,8 @@ impl Entity {
     /// Merges this entity with another entity of the same type.
     ///
     /// Fields are merged pairwise using their CRDT merge. The tombstone
-    /// is merged via LWW. Children are merged via union.
+    /// is merged via LWW. Children are merged via union. Overrides are
+    /// merged per-environment.
     ///
     /// # Panics
     ///
@@ -105,6 +123,7 @@ impl Entity {
                         conflicts.push(ConflictInfo {
                             entity_id: self.id.clone(),
                             field: name.clone(),
+                            environment: None,
                             contending_values: contending_values.clone(),
                         });
                     }
@@ -115,6 +134,55 @@ impl Entity {
                 (None, None) => unreachable!(),
             };
             fields.insert(name.clone(), merged_state);
+        }
+
+        // Merge overrides per-environment
+        let mut overrides = BTreeMap::new();
+        let all_envs: std::collections::BTreeSet<&String> =
+            self.overrides.keys().chain(other.overrides.keys()).collect();
+
+        for env in all_envs {
+            let self_env = self.overrides.get(env);
+            let other_env = other.overrides.get(env);
+
+            let mut env_fields = BTreeMap::new();
+            let env_field_names: std::collections::BTreeSet<&String> = self_env
+                .map(|m| m.keys())
+                .into_iter()
+                .flatten()
+                .chain(other_env.map(|m| m.keys()).into_iter().flatten())
+                .collect();
+
+            for field_name in env_field_names {
+                let self_field = self_env.and_then(|m| m.get(field_name));
+                let other_field = other_env.and_then(|m| m.get(field_name));
+
+                let merged_state = match (self_field, other_field) {
+                    (Some(a), Some(b)) => {
+                        let merged = a.merge(b);
+                        if let ConflictState::NeedsReview {
+                            ref contending_values,
+                        } = merged.conflict_state()
+                        {
+                            conflicts.push(ConflictInfo {
+                                entity_id: self.id.clone(),
+                                field: field_name.clone(),
+                                environment: Some(env.clone()),
+                                contending_values: contending_values.clone(),
+                            });
+                        }
+                        merged
+                    }
+                    (Some(a), None) => a.clone(),
+                    (None, Some(b)) => b.clone(),
+                    (None, None) => unreachable!(),
+                };
+                env_fields.insert(field_name.clone(), merged_state);
+            }
+
+            if !env_fields.is_empty() {
+                overrides.insert(env.clone(), env_fields);
+            }
         }
 
         // Merge tombstone via LWW
@@ -132,6 +200,7 @@ impl Entity {
             id: self.id.clone(),
             entity_type: self.entity_type.clone(),
             fields,
+            overrides,
             parent_id: self.parent_id.clone().or_else(|| other.parent_id.clone()),
             children,
             tombstone,
@@ -146,6 +215,9 @@ impl Entity {
 pub struct ConflictInfo {
     pub entity_id: EntityId,
     pub field: String,
+    /// Environment name if this conflict is in an override, None for base field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub environment: Option<String>,
     pub contending_values: Vec<crate::field::FieldValue>,
 }
 

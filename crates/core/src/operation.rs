@@ -46,7 +46,7 @@ pub enum OperationKind {
         new_parent_id: EntityId,
         new_position: String,
     },
-    /// Set an environment-specific override (deferred for v0.1).
+    /// Set an environment-specific field override.
     SetOverride {
         entity_id: EntityId,
         field: String,
@@ -134,6 +134,29 @@ impl Operation {
                 entity_id: entity_id.into(),
                 new_parent_id: new_parent_id.into(),
                 new_position: new_position.into(),
+            },
+        }
+    }
+
+    /// Creates a SetOverride operation for environment-specific field values.
+    pub fn set_override(
+        entity_id: impl Into<EntityId>,
+        field: impl Into<String>,
+        environment: impl Into<String>,
+        value: FieldValue,
+        actor: &ActorId,
+        timestamp: HlcTimestamp,
+    ) -> Self {
+        Self {
+            id: Uuid::new_v4(),
+            timestamp,
+            actor: actor.clone(),
+            intent: None,
+            kind: OperationKind::SetOverride {
+                entity_id: entity_id.into(),
+                field: field.into(),
+                environment: environment.into(),
+                value,
             },
         }
     }

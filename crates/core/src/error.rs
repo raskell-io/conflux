@@ -59,6 +59,10 @@ pub enum OperationError {
     #[error("unknown entity type: {0}")]
     UnknownEntityType(String),
 
+    /// The environment is not defined in the schema.
+    #[error("unknown environment: {0}")]
+    UnknownEnvironment(String),
+
     /// The operation kind is not yet implemented.
     #[error("not implemented: {0}")]
     NotImplemented(String),
