@@ -106,16 +106,28 @@ Push-based state updates for machine actors and reconcilers.
 
 ---
 
-## v0.5 — Multi-Node Replication
+## v0.5 — Multi-Node Replication ✅
 
 Distributed Conflux for high availability and geo-distribution.
 
 ### Goals
-- [ ] Operation replication between Conflux instances
-- [ ] Causal broadcast protocol
-- [ ] Conflict-free convergence across nodes
-- [ ] Leader election for milestone projection
-- [ ] Network partition tolerance
+- [x] Operation replication between Conflux instances
+- [x] Causal broadcast protocol (version vectors + anti-entropy)
+- [x] Conflict-free convergence across nodes
+- [x] Leader election for milestone projection
+- [x] Network partition tolerance (quorum-based, reconnection with backoff)
+
+### Implementation
+- [x] New crate: `conflux-replication` with gRPC protocol
+- [x] `NodeId`, `ClusterConfig`, `ClusterState` types
+- [x] `VersionVector` for causal anti-entropy
+- [x] `ReplicationService` gRPC server (ReplicateOperations, Sync, Heartbeat)
+- [x] `PeerClient`/`PeerManager` with exponential backoff reconnection
+- [x] `LeaderElectionTask`: highest node_id with quorum becomes leader
+- [x] `AntiEntropyTask`: periodic version vector comparison and gap filling
+- [x] `Clock::with_node_id()` for deterministic node-specific clocks
+- [x] SQLite persistence for version vectors
+- [x] CLI `[cluster]` config section for peer configuration
 
 ---
 
