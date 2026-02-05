@@ -1,5 +1,14 @@
 //! Persistent state storage for Conflux.
 //!
-//! Stores the operation log, resolved document state, and actor metadata.
-//! Uses SQLite for single-node deployments with a clean abstraction layer
-//! for future storage backends.
+//! Provides an append-only operation log, periodic document snapshots,
+//! and milestone metadata backed by SQLite.
+
+pub mod error;
+pub mod models;
+pub mod query;
+pub mod sqlite;
+
+pub use error::StoreError;
+pub use models::{StoredMilestone, StoredOperation, StoredSnapshot};
+pub use query::OperationQuery;
+pub use sqlite::SqliteStore;
