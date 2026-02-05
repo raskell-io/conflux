@@ -4,10 +4,12 @@ use crate::auth::Actor;
 use crate::dto::{
     field_value_to_json, json_to_field_value, operation_kind_to_log, BatchOperationRequest,
     BatchOperationResponse, ConflictInfoDto, CreateMilestoneRequest, CreateMilestoneResponse,
-    DocumentStateResponse, EntityStateResponse, HealthResponse, LogQueryParams, MilestoneSummary,
-    OperationDto, OperationLogEntry, OperationLogResponse, SubmitOperationRequest,
-    SubmitOperationResponse,
+    DocumentStateResponse, EntityStateResponse, EnvDiffParams, EnvironmentDiffResponse,
+    EnvironmentEntityStateResponse, EnvironmentStateResponse, EnvironmentsResponse, FieldDiff,
+    HealthResponse, LogQueryParams, MilestoneSummary, OperationDto, OperationLogEntry,
+    OperationLogResponse, SubmitOperationRequest, SubmitOperationResponse,
 };
+use conflux_core::schema_info::SchemaInfo;
 use crate::error::ApiError;
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
@@ -73,6 +75,19 @@ pub async fn submit_operation(
             new_parent_id,
             new_position,
         } => Operation::move_entity(entity_id, new_parent_id, new_position, &actor.0, timestamp),
+        OperationDto::SetOverride {
+            entity_id,
+            field,
+            environment,
+            value,
+        } => Operation::set_override(
+            entity_id,
+            field,
+            environment,
+            json_to_field_value(&value),
+            &actor.0,
+            timestamp,
+        ),
     };
 
     if let Some(intent) = req.intent {
@@ -172,6 +187,19 @@ pub async fn batch_operations(
             } => {
                 Operation::move_entity(entity_id, new_parent_id, new_position, &actor.0, timestamp)
             }
+            OperationDto::SetOverride {
+                entity_id,
+                field,
+                environment,
+                value,
+            } => Operation::set_override(
+                entity_id,
+                field,
+                environment,
+                json_to_field_value(&value),
+                &actor.0,
+                timestamp,
+            ),
         };
 
         if let Some(intent) = op_req.intent {
@@ -539,4 +567,168 @@ pub async fn get_entity_log(
         total,
         has_more,
     }))
+}
+
+// ============================================================================
+// Environments
+// ============================================================================
+
+/// List available environments.
+pub async fn list_environments(
+    State(state): State<AppState>,
+) -> Result<Json<EnvironmentsResponse>, ApiError> {
+    let schema_info = state.schema.as_schema_info();
+
+    let base = schema_info.base_environment().map(|s| s.to_string());
+
+    // Build list of all environments and inheritance map
+    let mut environments = Vec::new();
+    let mut inheritance = std::collections::HashMap::new();
+
+    if let Some(ref base_env) = base {
+        environments.push(base_env.clone());
+    }
+
+    // Get overlays from schema
+    if let Some(ref envs) = state.schema.environments {
+        for overlay in &envs.overlays {
+            environments.push(overlay.name.clone());
+            inheritance.insert(overlay.name.clone(), overlay.inherits.clone());
+        }
+    }
+
+    Ok(Json(EnvironmentsResponse {
+        base,
+        environments,
+        inheritance,
+    }))
+}
+
+/// Get document state resolved for a specific environment.
+pub async fn get_environment_state(
+    State(state): State<AppState>,
+    Path(env_name): Path<String>,
+) -> Result<Json<EnvironmentStateResponse>, ApiError> {
+    let schema_info = state.schema.as_schema_info();
+
+    // Verify environment exists
+    if !schema_info.has_environment(&env_name) {
+        return Err(ApiError::EntityNotFound(format!("environment {env_name}")));
+    }
+
+    let doc = state
+        .document
+        .read()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    let mut entities = Vec::new();
+    for (entity_id, entity) in &doc.entities {
+        let mut fields = serde_json::Map::new();
+        let mut field_sources = std::collections::HashMap::new();
+
+        // Get all field names for this entity type
+        if let Some(field_names) = schema_info.entity_fields(&entity.entity_type) {
+            for field_name in field_names {
+                // Resolve field value for this environment
+                if let Some(value) = doc.get_field_for_env(entity_id, field_name, &env_name, &schema_info) {
+                    fields.insert(field_name.to_string(), field_value_to_json(&value));
+
+                    // Determine source (which env the value came from)
+                    let source = find_field_source(entity, field_name, &env_name, &schema_info);
+                    field_sources.insert(field_name.to_string(), source);
+                }
+            }
+        }
+
+        entities.push(EnvironmentEntityStateResponse {
+            entity_id: entity_id.to_string(),
+            entity_type: entity.entity_type.clone(),
+            fields,
+            field_sources,
+            parent_id: entity.parent_id.as_ref().map(|p| p.to_string()),
+            children: entity.children.values().map(|c| c.to_string()).collect(),
+            tombstoned: entity.tombstone.value,
+        });
+    }
+
+    let root_entities = doc.roots.values().map(|e| e.to_string()).collect();
+
+    Ok(Json(EnvironmentStateResponse {
+        environment: env_name,
+        entities,
+        root_entities,
+    }))
+}
+
+/// Compare field values between two environments.
+pub async fn diff_environments(
+    State(state): State<AppState>,
+    Query(params): Query<EnvDiffParams>,
+) -> Result<Json<EnvironmentDiffResponse>, ApiError> {
+    let schema_info = state.schema.as_schema_info();
+
+    // Verify both environments exist
+    if !schema_info.has_environment(&params.from) {
+        return Err(ApiError::EntityNotFound(format!(
+            "environment {}",
+            params.from
+        )));
+    }
+    if !schema_info.has_environment(&params.to) {
+        return Err(ApiError::EntityNotFound(format!(
+            "environment {}",
+            params.to
+        )));
+    }
+
+    let doc = state
+        .document
+        .read()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    let mut differences = Vec::new();
+
+    for (entity_id, entity) in &doc.entities {
+        if let Some(field_names) = schema_info.entity_fields(&entity.entity_type) {
+            for field_name in field_names {
+                let from_value = doc.get_field_for_env(entity_id, field_name, &params.from, &schema_info);
+                let to_value = doc.get_field_for_env(entity_id, field_name, &params.to, &schema_info);
+
+                // Check if values differ
+                if from_value != to_value {
+                    differences.push(FieldDiff {
+                        entity_id: entity_id.to_string(),
+                        field: field_name.to_string(),
+                        from_value: from_value.map(|v| field_value_to_json(&v)),
+                        to_value: to_value.map(|v| field_value_to_json(&v)),
+                    });
+                }
+            }
+        }
+    }
+
+    Ok(Json(EnvironmentDiffResponse {
+        from_env: params.from,
+        to_env: params.to,
+        differences,
+    }))
+}
+
+/// Helper to find which environment a field value came from.
+fn find_field_source(
+    entity: &conflux_core::Entity,
+    field_name: &str,
+    env: &str,
+    schema: &dyn SchemaInfo,
+) -> String {
+    // Walk up the environment inheritance chain
+    let mut current_env = Some(env);
+    while let Some(e) = current_env {
+        if entity.get_override(e, field_name).is_some() {
+            return e.to_string();
+        }
+        current_env = schema.environment_parent(e);
+    }
+    // Fall back to base
+    "base".to_string()
 }

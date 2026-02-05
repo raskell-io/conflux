@@ -65,6 +65,10 @@ pub fn build_router(state: AppState) -> Router {
         // Log
         .route("/v1/log", get(handlers::get_operation_log))
         .route("/v1/log/{entity_path}", get(handlers::get_entity_log))
+        // Environments
+        .route("/v1/envs", get(handlers::list_environments))
+        .route("/v1/envs/diff", get(handlers::diff_environments))
+        .route("/v1/envs/{env_name}/state", get(handlers::get_environment_state))
         // State
         .with_state(state)
 }
@@ -248,6 +252,177 @@ mod tests {
                 Request::builder()
                     .uri("/v1/log")
                     .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    fn test_state_with_envs() -> AppState {
+        use conflux_core::MergeStrategy;
+        use conflux_schema::{ConflictMode, EntityDef, EnvironmentsDef, FieldDef, FieldType, OverlayDef};
+        use std::collections::HashMap;
+
+        let mut fields = HashMap::new();
+        fields.insert(
+            "weight".to_string(),
+            FieldDef {
+                name: "weight".to_string(),
+                field_type: FieldType::Int,
+                merge_strategy: MergeStrategy::Max,
+                conflict: ConflictMode::Auto,
+                target: None,
+                required: false,
+                range: None,
+                allowed_values: None,
+                pattern: None,
+            },
+        );
+
+        let mut entities = HashMap::new();
+        entities.insert(
+            "route".to_string(),
+            EntityDef {
+                name: "route".to_string(),
+                fields,
+                children: HashMap::new(),
+            },
+        );
+
+        let environments = Some(EnvironmentsDef {
+            base: "production".to_string(),
+            overlays: vec![
+                OverlayDef {
+                    name: "staging".to_string(),
+                    inherits: "production".to_string(),
+                },
+                OverlayDef {
+                    name: "development".to_string(),
+                    inherits: "staging".to_string(),
+                },
+            ],
+        });
+
+        let schema = Schema {
+            name: "test-envs".to_string(),
+            version: "1.0".to_string(),
+            entities,
+            environments,
+        };
+        let store = SqliteStore::open_in_memory().unwrap();
+        AppState::new(schema, store, "test-doc")
+    }
+
+    #[tokio::test]
+    async fn list_environments() {
+        let state = test_state_with_envs();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/envs")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_environment_state() {
+        let state = test_state_with_envs();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/envs/staging/state")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn get_environment_state_not_found() {
+        let state = test_state_with_envs();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/envs/nonexistent/state")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn diff_environments() {
+        let state = test_state_with_envs();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/envs/diff?from=production&to=staging")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn submit_set_override() {
+        let state = test_state_with_envs();
+        let router = build_router(state);
+
+        // First insert the entity
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ops")
+                    .header("content-type", "application/json")
+                    .header("x-conflux-actor", "test-user")
+                    .header("x-conflux-actor-class", "human")
+                    .body(Body::from(
+                        r#"{"type": "insert_entity", "entity_id": "route.api", "entity_type": "route"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Set a staging override
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ops")
+                    .header("content-type", "application/json")
+                    .header("x-conflux-actor", "test-user")
+                    .header("x-conflux-actor-class", "human")
+                    .body(Body::from(
+                        r#"{"type": "set_override", "entity_id": "route.api", "field": "weight", "environment": "staging", "value": 50}"#,
+                    ))
                     .unwrap(),
             )
             .await

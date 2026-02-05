@@ -43,6 +43,13 @@ pub enum OperationDto {
         new_parent_id: String,
         new_position: String,
     },
+    /// Set an environment-specific field override.
+    SetOverride {
+        entity_id: String,
+        field: String,
+        environment: String,
+        value: serde_json::Value,
+    },
 }
 
 /// Response after submitting an operation.
@@ -187,6 +194,12 @@ pub enum OperationLogKind {
         entity_id: String,
         new_parent_id: String,
     },
+    SetOverride {
+        entity_id: String,
+        field: String,
+        environment: String,
+        value: serde_json::Value,
+    },
 }
 
 /// Response containing operation log entries.
@@ -206,6 +219,70 @@ pub struct OperationLogResponse {
 pub struct HealthResponse {
     pub status: String,
     pub version: String,
+}
+
+// ============================================================================
+// Environment DTOs
+// ============================================================================
+
+/// Response listing available environments.
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentsResponse {
+    /// Base environment name.
+    pub base: Option<String>,
+    /// All environment names.
+    pub environments: Vec<String>,
+    /// Environment inheritance chain: child -> parent.
+    pub inheritance: std::collections::HashMap<String, String>,
+}
+
+/// Response containing environment-specific entity state.
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentEntityStateResponse {
+    pub entity_id: String,
+    pub entity_type: String,
+    /// Fields resolved for this environment (includes inherited values).
+    pub fields: serde_json::Map<String, serde_json::Value>,
+    /// Which environment each field value came from (base, or an overlay name).
+    pub field_sources: std::collections::HashMap<String, String>,
+    pub parent_id: Option<String>,
+    pub children: Vec<String>,
+    pub tombstoned: bool,
+}
+
+/// Response containing environment-specific document state.
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentStateResponse {
+    /// The environment this state is for.
+    pub environment: String,
+    pub entities: Vec<EnvironmentEntityStateResponse>,
+    pub root_entities: Vec<String>,
+}
+
+/// Query parameters for environment diff.
+#[derive(Debug, Clone, Deserialize)]
+pub struct EnvDiffParams {
+    /// Source environment.
+    pub from: String,
+    /// Target environment.
+    pub to: String,
+}
+
+/// A single field difference between environments.
+#[derive(Debug, Clone, Serialize)]
+pub struct FieldDiff {
+    pub entity_id: String,
+    pub field: String,
+    pub from_value: Option<serde_json::Value>,
+    pub to_value: Option<serde_json::Value>,
+}
+
+/// Response containing differences between two environments.
+#[derive(Debug, Clone, Serialize)]
+pub struct EnvironmentDiffResponse {
+    pub from_env: String,
+    pub to_env: String,
+    pub differences: Vec<FieldDiff>,
 }
 
 // ============================================================================
@@ -295,13 +372,16 @@ pub fn operation_kind_to_log(kind: &OperationKind) -> OperationLogKind {
             entity_id: entity_id.to_string(),
             new_parent_id: new_parent_id.to_string(),
         },
-        OperationKind::SetOverride { entity_id, .. } => {
-            // Treat as SetField for logging purposes
-            OperationLogKind::SetField {
-                entity_id: entity_id.to_string(),
-                field: "(override)".to_string(),
-                value: serde_json::Value::Null,
-            }
+        OperationKind::SetOverride {
+            entity_id,
+            field,
+            environment,
+            value,
+        } => OperationLogKind::SetOverride {
+            entity_id: entity_id.to_string(),
+            field: field.clone(),
+            environment: environment.clone(),
+            value: field_value_to_json(value),
         }
     }
 }
