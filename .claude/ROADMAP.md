@@ -179,6 +179,27 @@ Extended format support with Jsonnet and CUE import, plus a plugin API for custo
 
 ---
 
+## v0.8 — Storage Abstraction ✅
+
+Pluggable storage backends via a `Store` trait, keeping SQLite as the default and adding an in-memory implementation for testing.
+
+### Goals
+- [x] Define `Store` trait with 15 methods across 4 data categories
+- [x] Implement trait for existing `SqliteStore`
+- [x] Add `MemoryStore` for testing and embedded use
+- [x] Maintain full backward compatibility
+- [x] Type aliases for trait objects (`BoxStore`, `ArcStore`)
+
+### Implementation
+- [x] `Store` trait: operations (6), snapshots (3), milestones (4), version vectors (2)
+- [x] `SqliteStore` wrapped `Connection` in `Mutex<Connection>` for `Send + Sync`
+- [x] `MemoryStore` with `parking_lot::RwLock` and HashMap-based storage
+- [x] Secondary index for O(1) operation lookup by ID
+- [x] `Backend(String)` error variant for future backends
+- [x] 31 tests (16 MemoryStore + 15 SqliteStore mirrored)
+
+---
+
 ## Future Considerations
 
 ### Integrations
@@ -198,4 +219,8 @@ Extended format support with Jsonnet and CUE import, plus a plugin API for custo
 - Operation batching and compression
 - Lazy snapshot materialization
 - Benchmark suite
-- Storage abstraction (pluggable backends beyond SQLite)
+
+### Storage Backends
+- PostgreSQL backend for production clusters
+- DynamoDB backend for serverless deployments
+- AsyncStore trait for async backends

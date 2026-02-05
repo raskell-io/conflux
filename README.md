@@ -237,7 +237,7 @@ Each crate has its own `docs/` directory with detailed documentation.
 |-------|-------------|
 | [`conflux-core`](crates/core/) | CRDT document model, typed operations, per-field merge semantics |
 | [`conflux-schema`](crates/schema/) | Schema definition language (TOML) for config structure and merge rules |
-| [`conflux-store`](crates/store/) | Persistent operation log and snapshot storage (SQLite) |
+| [`conflux-store`](crates/store/) | Pluggable storage backends (SQLite default, in-memory for testing) |
 | [`conflux-git`](crates/git/) | Git milestone projection, config format serialization, and serializer plugin API |
 | [`conflux-api`](crates/api/) | HTTP and gRPC API server for machine actors |
 | [`conflux`](crates/cli/) | CLI and daemon entry point |
