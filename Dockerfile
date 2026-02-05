@@ -6,7 +6,7 @@ LABEL org.opencontainers.image.licenses="Apache-2.0"
 
 COPY conflux /usr/local/bin/conflux
 
-EXPOSE 3000
+EXPOSE 9400
 
 ENTRYPOINT ["/usr/local/bin/conflux"]
 CMD ["daemon"]

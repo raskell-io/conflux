@@ -38,10 +38,10 @@ The minimum viable artifact: a single-node daemon that accepts typed operations,
 - [x] Daemon mode (`conflux daemon`)
 
 ### Milestone: Release (In Progress)
-- [ ] CI/CD workflows (GitHub Actions for test, lint, release)
+- [x] CI/CD workflows (GitHub Actions for test, lint, release)
 - [x] Integration test suite (multi-actor scenarios)
 - [x] Example project with schema and sample configs
-- [ ] Single static binary builds (Linux, macOS, Docker)
+- [x] Single static binary builds (Linux, macOS, Docker)
 - [ ] Documentation site (getting started, schema reference, CLI reference)
 
 ---
