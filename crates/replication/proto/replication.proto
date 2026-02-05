@@ -1,0 +1,144 @@
+syntax = "proto3";
+
+package conflux.replication.v1;
+
+// Replication service for multi-node Conflux clusters.
+service ReplicationService {
+  // Bi-directional operation streaming for real-time replication.
+  rpc ReplicateOperations(stream ReplicateRequest) returns (stream ReplicateResponse);
+
+  // Anti-entropy sync: compare version vectors and exchange missing operations.
+  rpc Sync(SyncRequest) returns (SyncResponse);
+
+  // Peer liveness check.
+  rpc Heartbeat(HeartbeatRequest) returns (HeartbeatResponse);
+
+  // Get current cluster view for leader election.
+  rpc GetClusterView(GetClusterViewRequest) returns (GetClusterViewResponse);
+}
+
+// Request for operation replication.
+message ReplicateRequest {
+  // The operation payload as JSON.
+  string operation_json = 1;
+
+  // Document ID this operation belongs to.
+  string document_id = 2;
+
+  // Source node ID.
+  string source_node_id = 3;
+}
+
+// Response for operation replication.
+message ReplicateResponse {
+  // Acknowledgment of receipt.
+  bool acknowledged = 1;
+
+  // Operation ID that was acknowledged.
+  string operation_id = 2;
+
+  // Error message if failed.
+  optional string error = 3;
+}
+
+// Request for anti-entropy sync.
+message SyncRequest {
+  // Document ID to sync.
+  string document_id = 1;
+
+  // Requesting node's version vector as JSON.
+  // Maps node_id -> highest HLC timestamp seen from that node.
+  string version_vector_json = 2;
+
+  // Maximum number of operations to return.
+  uint32 max_operations = 3;
+
+  // Pagination cursor for large syncs.
+  optional string cursor = 4;
+}
+
+// Response for anti-entropy sync.
+message SyncResponse {
+  // Operations the requester is missing, as JSON array.
+  repeated string operations_json = 1;
+
+  // Responder's version vector as JSON.
+  string version_vector_json = 2;
+
+  // Pagination cursor if more operations available.
+  optional string next_cursor = 3;
+
+  // Whether sync is complete (no more operations).
+  bool complete = 4;
+}
+
+// Heartbeat request.
+message HeartbeatRequest {
+  // Source node ID.
+  string node_id = 1;
+
+  // Current HLC timestamp.
+  string timestamp = 2;
+
+  // Node's current role.
+  ClusterRole role = 3;
+}
+
+// Heartbeat response.
+message HeartbeatResponse {
+  // Responding node ID.
+  string node_id = 1;
+
+  // Current HLC timestamp.
+  string timestamp = 2;
+
+  // Node's current role.
+  ClusterRole role = 3;
+
+  // Whether this node considers the sender healthy.
+  bool healthy = 4;
+}
+
+// Get cluster view request.
+message GetClusterViewRequest {
+  // Requesting node ID.
+  string node_id = 1;
+}
+
+// Get cluster view response.
+message GetClusterViewResponse {
+  // Responding node ID.
+  string node_id = 1;
+
+  // Current leader (if known).
+  optional string leader_id = 2;
+
+  // All known peers and their status.
+  repeated PeerStatus peers = 3;
+
+  // This node's current role.
+  ClusterRole role = 4;
+}
+
+// Status of a peer node.
+message PeerStatus {
+  // Peer node ID.
+  string node_id = 1;
+
+  // Whether peer is currently connected.
+  bool connected = 2;
+
+  // Last heartbeat timestamp.
+  optional string last_heartbeat = 3;
+
+  // Peer's role (if known).
+  ClusterRole role = 4;
+}
+
+// Cluster role for a node.
+enum ClusterRole {
+  CLUSTER_ROLE_UNSPECIFIED = 0;
+  CLUSTER_ROLE_LEADER = 1;
+  CLUSTER_ROLE_FOLLOWER = 2;
+  CLUSTER_ROLE_UNKNOWN = 3;
+}

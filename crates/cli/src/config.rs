@@ -24,6 +24,46 @@ pub struct Config {
 
     /// Git projection configuration.
     pub git: Option<GitConfig>,
+
+    /// Cluster configuration for multi-node replication.
+    pub cluster: Option<ClusterConfig>,
+}
+
+/// Cluster configuration for multi-node replication.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ClusterConfig {
+    /// This node's unique identifier.
+    pub node_id: String,
+
+    /// Port for replication gRPC service.
+    #[serde(default = "default_replication_port")]
+    pub replication_port: u16,
+
+    /// Peer nodes in the cluster.
+    #[serde(default)]
+    pub peers: Vec<PeerConfig>,
+
+    /// Interval between anti-entropy syncs (in seconds).
+    #[serde(default = "default_anti_entropy_interval_secs")]
+    pub anti_entropy_interval_secs: u64,
+
+    /// Heartbeat interval (in seconds).
+    #[serde(default = "default_heartbeat_interval_secs")]
+    pub heartbeat_interval_secs: u64,
+
+    /// Timeout for considering a peer dead (in seconds).
+    #[serde(default = "default_peer_timeout_secs")]
+    pub peer_timeout_secs: u64,
+}
+
+/// Configuration for a peer node in the cluster.
+#[derive(Debug, Clone, Deserialize)]
+pub struct PeerConfig {
+    /// Peer's node ID.
+    pub node_id: String,
+
+    /// Address to connect to (host:port).
+    pub addr: String,
 }
 
 /// Server configuration.
@@ -73,6 +113,22 @@ fn default_http_port() -> u16 {
 
 fn default_output_format() -> String {
     "yaml".to_string()
+}
+
+fn default_replication_port() -> u16 {
+    9401
+}
+
+fn default_anti_entropy_interval_secs() -> u64 {
+    30
+}
+
+fn default_heartbeat_interval_secs() -> u64 {
+    5
+}
+
+fn default_peer_timeout_secs() -> u64 {
+    15
 }
 
 impl Config {
@@ -171,5 +227,41 @@ author_email = "conflux@example.com"
         assert_eq!(git.repo, PathBuf::from("./output"));
         assert_eq!(git.format, "json");
         assert_eq!(git.author_name, Some("Conflux Bot".to_string()));
+    }
+
+    #[test]
+    fn parse_cluster_config() {
+        let content = r#"
+schema = "schema.toml"
+
+[cluster]
+node_id = "node-a"
+replication_port = 9402
+
+[[cluster.peers]]
+node_id = "node-b"
+addr = "node-b.internal:9402"
+
+[[cluster.peers]]
+node_id = "node-c"
+addr = "node-c.internal:9402"
+"#;
+        let mut file = NamedTempFile::new().unwrap();
+        file.write_all(content.as_bytes()).unwrap();
+
+        let config = Config::from_file(file.path()).unwrap();
+        let cluster = config.cluster.unwrap();
+
+        assert_eq!(cluster.node_id, "node-a");
+        assert_eq!(cluster.replication_port, 9402);
+        assert_eq!(cluster.peers.len(), 2);
+        assert_eq!(cluster.peers[0].node_id, "node-b");
+        assert_eq!(cluster.peers[0].addr, "node-b.internal:9402");
+        assert_eq!(cluster.peers[1].node_id, "node-c");
+        assert_eq!(cluster.peers[1].addr, "node-c.internal:9402");
+        // Defaults
+        assert_eq!(cluster.anti_entropy_interval_secs, 30);
+        assert_eq!(cluster.heartbeat_interval_secs, 5);
+        assert_eq!(cluster.peer_timeout_secs, 15);
     }
 }

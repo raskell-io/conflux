@@ -15,6 +15,7 @@ conflux-schema = { path = "../schema" }
 conflux-store = { path = "../store" }
 conflux-git = { path = "../git" }
 conflux-api = { path = "../api" }
+conflux-replication = { path = "../replication" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 serde_yaml = { workspace = true }

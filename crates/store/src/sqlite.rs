@@ -87,6 +87,12 @@ impl SqliteStore {
 
             CREATE INDEX IF NOT EXISTS idx_milestones_doc_created
                 ON milestones (document_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS version_vectors (
+                document_id TEXT PRIMARY KEY,
+                data TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            );
             ",
         )?;
         Ok(())
@@ -503,6 +509,125 @@ impl SqliteStore {
         };
         Ok(count as u64)
     }
+
+    // --- Version Vectors ---
+
+    /// Saves a version vector for a document.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError::Serialization` if the version vector can't be serialized,
+    /// or `StoreError::Database` on upsert failure.
+    pub fn save_version_vector(
+        &self,
+        document_id: &str,
+        version_vector_json: &str,
+    ) -> Result<(), StoreError> {
+        self.conn.execute(
+            "INSERT INTO version_vectors (document_id, data)
+             VALUES (?1, ?2)
+             ON CONFLICT(document_id) DO UPDATE SET
+                data = excluded.data,
+                updated_at = datetime('now')",
+            params![document_id, version_vector_json],
+        )?;
+        Ok(())
+    }
+
+    /// Loads a version vector for a document.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError::NotFound` if no version vector exists for the document.
+    pub fn load_version_vector(&self, document_id: &str) -> Result<String, StoreError> {
+        let result = self.conn.query_row(
+            "SELECT data FROM version_vectors WHERE document_id = ?1",
+            params![document_id],
+            |row| row.get::<_, String>(0),
+        );
+
+        match result {
+            Ok(data) => Ok(data),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Err(StoreError::NotFound(format!(
+                "version vector for document {document_id}"
+            ))),
+            Err(e) => Err(StoreError::Database(e)),
+        }
+    }
+
+    /// Queries operations by actor (node) since a given timestamp.
+    ///
+    /// This is useful for anti-entropy sync to find operations from a specific node
+    /// that another node might be missing.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError::Database` on query failure.
+    pub fn get_operations_by_actor_since(
+        &self,
+        document_id: &str,
+        actor_id: &str,
+        since: Option<&HlcTimestamp>,
+    ) -> Result<Vec<StoredOperation>, StoreError> {
+        let (sql, params): (String, Vec<Box<dyn rusqlite::ToSql>>) = match since {
+            Some(ts) => (
+                "SELECT payload, document_id, created_at FROM operations
+                 WHERE document_id = ?1 AND actor_id = ?2 AND hlc_timestamp > ?3
+                 ORDER BY hlc_timestamp ASC".to_string(),
+                vec![
+                    Box::new(document_id.to_string()),
+                    Box::new(actor_id.to_string()),
+                    Box::new(ts.to_string()),
+                ],
+            ),
+            None => (
+                "SELECT payload, document_id, created_at FROM operations
+                 WHERE document_id = ?1 AND actor_id = ?2
+                 ORDER BY hlc_timestamp ASC".to_string(),
+                vec![
+                    Box::new(document_id.to_string()),
+                    Box::new(actor_id.to_string()),
+                ],
+            ),
+        };
+
+        let mut stmt = self.conn.prepare(&sql)?;
+
+        let param_refs: Vec<&dyn rusqlite::ToSql> = params.iter().map(|b| b.as_ref()).collect();
+
+        let rows = stmt.query_map(param_refs.as_slice(), |row| {
+            let payload: String = row.get(0)?;
+            let document_id: String = row.get(1)?;
+            let created_at: String = row.get(2)?;
+            Ok((payload, document_id, created_at))
+        })?;
+
+        let mut results = Vec::new();
+        for row in rows {
+            let (payload, document_id, created_at) = row?;
+            let operation: Operation = serde_json::from_str(&payload)?;
+            results.push(StoredOperation {
+                operation,
+                document_id,
+                created_at,
+            });
+        }
+        Ok(results)
+    }
+
+    /// Checks if an operation with the given ID already exists.
+    ///
+    /// # Errors
+    ///
+    /// Returns `StoreError::Database` on query failure.
+    pub fn operation_exists(&self, operation_id: &Uuid) -> Result<bool, StoreError> {
+        let count: i64 = self.conn.query_row(
+            "SELECT COUNT(*) FROM operations WHERE id = ?1",
+            params![operation_id.to_string()],
+            |row| row.get(0),
+        )?;
+        Ok(count > 0)
+    }
 }
 
 /// Extracts the entity_id string from an operation's kind.
@@ -840,5 +965,89 @@ mod tests {
         let ts = clock.new_timestamp();
         store.save_snapshot("doc-1", &ts, &Document::new()).unwrap();
         assert!(store.latest_snapshot("doc-2").is_err());
+    }
+
+    #[test]
+    fn version_vector_save_and_load() {
+        let store = SqliteStore::open_in_memory().unwrap();
+
+        let vv_json = r#"{"node-a":"2024-01-01T00:00:00.000000000Z/1","node-b":"2024-01-02T00:00:00.000000000Z/2"}"#;
+
+        store.save_version_vector("doc-1", vv_json).unwrap();
+
+        let loaded = store.load_version_vector("doc-1").unwrap();
+        assert_eq!(loaded, vv_json);
+
+        // Update it
+        let vv_json2 = r#"{"node-a":"2024-01-03T00:00:00.000000000Z/3"}"#;
+        store.save_version_vector("doc-1", vv_json2).unwrap();
+
+        let loaded2 = store.load_version_vector("doc-1").unwrap();
+        assert_eq!(loaded2, vv_json2);
+    }
+
+    #[test]
+    fn version_vector_not_found() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        let result = store.load_version_vector("nonexistent");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn get_operations_by_actor_since() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        let clock = Clock::new();
+        let alice = test_actor("alice");
+        let bob = test_actor("bob");
+
+        // Add ops from alice and bob
+        let op1 = make_set_field_op(&clock, &alice, "route.api", "weight", FieldValue::Int(1));
+        let ts_after_1 = clock.new_timestamp();
+        let op2 = make_set_field_op(&clock, &bob, "route.api", "weight", FieldValue::Int(2));
+        let op3 = make_set_field_op(&clock, &alice, "route.api", "weight", FieldValue::Int(3));
+
+        store.append_operation("doc-1", &op1).unwrap();
+        store.append_operation("doc-1", &op2).unwrap();
+        store.append_operation("doc-1", &op3).unwrap();
+
+        // Get all ops from alice
+        let alice_ops = store
+            .get_operations_by_actor_since("doc-1", "alice", None)
+            .unwrap();
+        assert_eq!(alice_ops.len(), 2);
+        assert_eq!(alice_ops[0].operation.id, op1.id);
+        assert_eq!(alice_ops[1].operation.id, op3.id);
+
+        // Get ops from alice since ts_after_1
+        let alice_ops_since = store
+            .get_operations_by_actor_since("doc-1", "alice", Some(&ts_after_1))
+            .unwrap();
+        assert_eq!(alice_ops_since.len(), 1);
+        assert_eq!(alice_ops_since[0].operation.id, op3.id);
+
+        // Get ops from bob
+        let bob_ops = store
+            .get_operations_by_actor_since("doc-1", "bob", None)
+            .unwrap();
+        assert_eq!(bob_ops.len(), 1);
+        assert_eq!(bob_ops[0].operation.id, op2.id);
+    }
+
+    #[test]
+    fn operation_exists() {
+        let store = SqliteStore::open_in_memory().unwrap();
+        let clock = Clock::new();
+        let actor = test_actor("alice");
+
+        let op = make_set_field_op(&clock, &actor, "route.api", "weight", FieldValue::Int(1));
+
+        // Doesn't exist yet
+        assert!(!store.operation_exists(&op.id).unwrap());
+
+        // Add it
+        store.append_operation("doc-1", &op).unwrap();
+
+        // Now exists
+        assert!(store.operation_exists(&op.id).unwrap());
     }
 }

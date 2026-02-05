@@ -102,4 +102,8 @@ pub enum ClockError {
     /// The incoming timestamp exceeds the maximum allowed delta.
     #[error("timestamp delta exceeded: {0}")]
     DeltaExceeded(String),
+
+    /// Invalid node ID for clock initialization.
+    #[error("invalid node ID: {0}")]
+    InvalidNodeId(String),
 }
