@@ -44,9 +44,9 @@ pub struct ImportArgs {
     #[arg(long, short)]
     pub recursive: bool,
 
-    /// File extensions to include (comma-separated, e.g., "yaml,json,toml").
-    /// Defaults to yaml,yml,json,toml.
-    #[arg(long, default_value = "yaml,yml,json,toml")]
+    /// File extensions to include (comma-separated, e.g., "yaml,json,toml,kdl").
+    /// Defaults to yaml,yml,json,toml,kdl.
+    #[arg(long, default_value = "yaml,yml,json,toml,kdl")]
     pub extensions: String,
 
     /// Use filename (without extension) as entity ID prefix.
@@ -324,7 +324,8 @@ fn parse_config_file(
         "toml" => toml::from_str::<toml::Value>(content)
             .map(|v| serde_json::to_value(v).unwrap())
             .context("parsing TOML")?,
-        _ => anyhow::bail!("unsupported file format: {extension}. Supported: json, yaml, toml"),
+        "kdl" => kdl_to_json(content).context("parsing KDL")?,
+        _ => anyhow::bail!("unsupported file format: {extension}. Supported: json, yaml, toml, kdl"),
     };
 
     // Convert JSON to entity map
@@ -389,6 +390,72 @@ fn json_to_field_value(value: &serde_json::Value) -> FieldValue {
     }
 }
 
+/// Converts a KDL document to a JSON value.
+///
+/// KDL structure mapping:
+/// - Top-level nodes become object keys (entity IDs)
+/// - Node properties become field values
+/// - Node children with values become nested fields
+fn kdl_to_json(content: &str) -> Result<serde_json::Value> {
+    let doc: kdl::KdlDocument = content.parse().map_err(|e| anyhow::anyhow!("{e}"))?;
+
+    let mut root = serde_json::Map::new();
+
+    for node in doc.nodes() {
+        let name = node.name().value().to_string();
+        let value = kdl_node_to_json(node);
+        root.insert(name, value);
+    }
+
+    Ok(serde_json::Value::Object(root))
+}
+
+/// Converts a KDL node to a JSON value.
+fn kdl_node_to_json(node: &kdl::KdlNode) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+
+    // Add properties as fields
+    for entry in node.entries() {
+        if let Some(name) = entry.name() {
+            let value = kdl_value_to_json(entry.value());
+            obj.insert(name.value().to_string(), value);
+        }
+    }
+
+    // Add children as nested fields
+    if let Some(children) = node.children() {
+        for child in children.nodes() {
+            let child_name = child.name().value().to_string();
+
+            // If child has no properties/children but has arguments, use first argument as value
+            if child.entries().iter().all(|e| e.name().is_none())
+                && child.children().is_none()
+                && !child.entries().is_empty()
+            {
+                let value = kdl_value_to_json(child.entries().first().unwrap().value());
+                obj.insert(child_name, value);
+            } else {
+                obj.insert(child_name, kdl_node_to_json(child));
+            }
+        }
+    }
+
+    serde_json::Value::Object(obj)
+}
+
+/// Converts a KDL value to a JSON value.
+fn kdl_value_to_json(value: &kdl::KdlValue) -> serde_json::Value {
+    match value {
+        kdl::KdlValue::String(s) => serde_json::Value::String(s.clone()),
+        kdl::KdlValue::Integer(i) => serde_json::Value::Number((*i as i64).into()),
+        kdl::KdlValue::Float(f) => serde_json::Number::from_f64(*f)
+            .map(serde_json::Value::Number)
+            .unwrap_or(serde_json::Value::Null),
+        kdl::KdlValue::Bool(b) => serde_json::Value::Bool(*b),
+        kdl::KdlValue::Null => serde_json::Value::Null,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -415,5 +482,40 @@ mod tests {
         let result = parse_config_file(&path, content).unwrap();
 
         assert!(result.contains_key("service1"));
+    }
+
+    #[test]
+    fn parse_kdl_config() {
+        let content = r#"
+service1 {
+    replicas 3
+    image "nginx"
+}
+"#;
+        let path = PathBuf::from("test.kdl");
+        let result = parse_config_file(&path, content).unwrap();
+
+        assert!(result.contains_key("service1"));
+        let fields = result.get("service1").unwrap();
+        assert_eq!(fields.get("replicas"), Some(&FieldValue::Int(3)));
+        assert_eq!(
+            fields.get("image"),
+            Some(&FieldValue::String("nginx".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_kdl_config_with_properties() {
+        let content = r#"service1 replicas=3 image="nginx""#;
+        let path = PathBuf::from("test.kdl");
+        let result = parse_config_file(&path, content).unwrap();
+
+        assert!(result.contains_key("service1"));
+        let fields = result.get("service1").unwrap();
+        assert_eq!(fields.get("replicas"), Some(&FieldValue::Int(3)));
+        assert_eq!(
+            fields.get("image"),
+            Some(&FieldValue::String("nginx".to_string()))
+        );
     }
 }
