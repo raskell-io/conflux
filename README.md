@@ -35,7 +35,7 @@ Conflux is a daemon + CLI that replaces git as the write path for infrastructure
 
 ## Status
 
-Early development. Core CRDT model and schema language are being implemented. Not yet usable.
+All core crates implemented. Ready for early testing and feedback.
 
 ## Quick Start
 
@@ -43,20 +43,32 @@ Early development. Core CRDT model and schema language are being implemented. No
 # Install
 cargo install conflux
 
-# Initialize a project with a schema
-conflux init --schema ./schema.toml --git-remote git@github.com:org/infra-config.git
+# Initialize a project
+conflux init --schema schema.toml
 
 # Import existing config files
-conflux import ./configs/ --env production
+conflux import ./configs/ --format yaml --entity-type service
 
 # Make a change
-conflux set route.api-v1.weight 80 --reason "shifting traffic for canary"
+conflux set route.api weight 80 --intent "shifting traffic for canary"
 
-# See pending changes
+# View entity state
+conflux get route.api
+
+# See document status
 conflux status
 
-# Snapshot to git
-conflux milestone --message "post-canary traffic shift"
+# View operation history
+conflux log --limit 10
+
+# See who changed what
+conflux blame route.api
+
+# Create a milestone (commit to git)
+conflux milestone create -m "post-canary traffic shift"
+
+# Run the API server
+conflux daemon --port 8080
 ```
 
 ## How It Works
@@ -104,42 +116,43 @@ conflux milestone --message "post-canary traffic shift"
 Define your config structure and merge rules in TOML:
 
 ```toml
-[schema]
-name = "my-config"
-version = "1.0"
-
-[entity.route]
-fields = [
-    { name = "path",     type = "string",   merge = "lww",  conflict = "review" },
-    { name = "weight",   type = "int",      merge = "max",  range = "0,100" },
-    { name = "timeout",  type = "duration", merge = "lww" },
-    { name = "upstream", type = "ref",      target = "upstream", merge = "lww" },
-]
-
-[entity.upstream]
-fields = [
-    { name = "targets",      type = "list<address>", merge = "grow-set" },
-    { name = "health-check", type = "bool",          merge = "lww" },
-]
+name = "my-infrastructure"
+version = "1.0.0"
 
 [environments]
 base = "production"
+overlays = [
+    { name = "staging", inherits = "production" },
+    { name = "development", inherits = "staging" },
+]
 
-[environments.overlays]
-staging = { inherits = "production" }
-development = { inherits = "staging" }
+[entity.route]
+fields = [
+    { name = "path",     type = "string",       merge = "lww" },
+    { name = "weight",   type = "int",          merge = "max" },
+    { name = "timeout",  type = "duration",     merge = "min" },
+    { name = "service",  type = "ref<service>", merge = "lww" },
+]
+
+[entity.service]
+fields = [
+    { name = "image",    type = "string",     merge = "lww" },
+    { name = "replicas", type = "int",        merge = "max", default = 1 },
+    { name = "env_vars", type = "map",        merge = "lww" },
+    { name = "ports",    type = "list<int>",  merge = "set" },
+]
 ```
 
 ### Merge Strategies
 
 | Strategy | Semantics | CRDT Backing |
 |----------|-----------|--------------|
-| `lww` | Last writer wins (HLC + actor tiebreak) | LWW-Register |
-| `max` | Highest numeric value wins | Max-Register |
-| `min` | Lowest numeric value wins | Min-Register |
-| `grow-set` | Elements can be added, never removed | G-Set |
-| `or-set` | Add and remove, concurrent add wins | OR-Set |
-| `review` | Concurrent writes flagged for human review | LWW + conflict flag |
+| `lww` | Last writer wins (HLC + actor tiebreak) | LwwRegister |
+| `max` | Highest numeric value wins | MaxRegister |
+| `min` | Lowest numeric value wins | MinRegister |
+| `set` | Add and remove, concurrent add wins | ObservedRemoveSet |
+| `grow` | Elements can be added, never removed | GrowOnlySet |
+| `review` | Concurrent writes flagged for human review | ReviewRegister |
 
 ### Milestone Commits
 
@@ -157,6 +170,50 @@ Environments affected: production, staging
 Causal range: hlc:1706012400.0042 → hlc:1706015000.0187
 Operations: 3
 ```
+
+### CLI Commands
+
+| Command | Description |
+|---------|-------------|
+| `init` | Initialize a new Conflux project |
+| `import` | Import existing JSON/YAML/TOML config files |
+| `set` | Set a field value on an entity |
+| `get` | Get entity or field values |
+| `diff` | Show changes since a milestone |
+| `log` | Show the operation log |
+| `blame` | Show per-field attribution (who changed what) |
+| `status` | Show document statistics |
+| `milestone` | Create, list, or show milestones |
+| `promote` | Promote configuration between environments |
+| `daemon` | Run the API server |
+
+See [`crates/cli/docs/README.md`](crates/cli/docs/README.md) for full CLI documentation.
+
+### REST API
+
+The daemon exposes a REST API for programmatic access:
+
+```bash
+# Get all entities
+curl http://localhost:8080/entities
+
+# Get specific entity
+curl http://localhost:8080/entities/service.api
+
+# Set a field
+curl -X PUT http://localhost:8080/entities/service.api/fields/replicas \
+  -H "Content-Type: application/json" \
+  -H "X-Actor: deploy-pipeline" \
+  -H "X-Actor-Class: pipeline" \
+  -d '{"value": 5, "intent": "Scale for traffic"}'
+
+# Create a milestone
+curl -X POST http://localhost:8080/milestones \
+  -H "Content-Type: application/json" \
+  -d '{"message": "Deploy v2.0", "environments": ["production"]}'
+```
+
+See [`crates/api/docs/README.md`](crates/api/docs/README.md) for full API documentation.
 
 ## Why Not Just Git?
 
