@@ -1,0 +1,542 @@
+//! HTTP request handlers.
+
+use crate::auth::Actor;
+use crate::dto::{
+    field_value_to_json, json_to_field_value, operation_kind_to_log, BatchOperationRequest,
+    BatchOperationResponse, ConflictInfoDto, CreateMilestoneRequest, CreateMilestoneResponse,
+    DocumentStateResponse, EntityStateResponse, HealthResponse, LogQueryParams, MilestoneSummary,
+    OperationDto, OperationLogEntry, OperationLogResponse, SubmitOperationRequest,
+    SubmitOperationResponse,
+};
+use crate::error::ApiError;
+use crate::state::AppState;
+use axum::extract::{Path, Query, State};
+use axum::Json;
+use conflux_core::{ApplyResult, EntityId, Operation};
+use conflux_store::OperationQuery;
+
+// ============================================================================
+// Health
+// ============================================================================
+
+/// Health check endpoint.
+pub async fn health() -> Json<HealthResponse> {
+    Json(HealthResponse {
+        status: "ok".to_string(),
+        version: env!("CARGO_PKG_VERSION").to_string(),
+    })
+}
+
+// ============================================================================
+// Operations
+// ============================================================================
+
+/// Submit a single operation.
+pub async fn submit_operation(
+    State(state): State<AppState>,
+    actor: Actor,
+    Json(req): Json<SubmitOperationRequest>,
+) -> Result<Json<SubmitOperationResponse>, ApiError> {
+    let timestamp = state.clock.new_timestamp();
+
+    // Convert DTO to core Operation
+    let mut operation = match req.operation {
+        OperationDto::SetField {
+            entity_id,
+            field,
+            value,
+        } => Operation::set_field(
+            entity_id,
+            field,
+            json_to_field_value(&value),
+            &actor.0,
+            timestamp,
+        ),
+        OperationDto::InsertEntity {
+            entity_id,
+            entity_type,
+            parent_id,
+            position,
+        } => Operation::insert_entity(
+            entity_id,
+            entity_type,
+            parent_id.map(EntityId::new),
+            position,
+            &actor.0,
+            timestamp,
+        ),
+        OperationDto::RemoveEntity { entity_id } => {
+            Operation::remove_entity(entity_id, &actor.0, timestamp)
+        }
+        OperationDto::MoveEntity {
+            entity_id,
+            new_parent_id,
+            new_position,
+        } => Operation::move_entity(entity_id, new_parent_id, new_position, &actor.0, timestamp),
+    };
+
+    if let Some(intent) = req.intent {
+        operation = operation.with_intent(intent);
+    }
+
+    // Get schema info from the configured schema
+    let schema_info = state.schema.as_schema_info();
+
+    // Apply to document
+    let (conflict, conflict_info) = {
+        let mut doc = state
+            .document
+            .write()
+            .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+        match doc.apply(&operation, &schema_info, &state.clock)? {
+            ApplyResult::Applied => (false, None),
+            ApplyResult::Conflict(info) => (
+                true,
+                Some(ConflictInfoDto {
+                    entity_id: info.entity_id.to_string(),
+                    field: info.field,
+                    contending_values: info
+                        .contending_values
+                        .iter()
+                        .map(field_value_to_json)
+                        .collect(),
+                }),
+            ),
+        }
+    };
+
+    // Persist to store
+    {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+        store.append_operation(&state.document_id, &operation)?;
+    }
+
+    Ok(Json(SubmitOperationResponse {
+        operation_id: operation.id,
+        timestamp: operation.timestamp.to_string(),
+        conflict,
+        conflict_info,
+    }))
+}
+
+/// Submit multiple operations atomically.
+pub async fn batch_operations(
+    State(state): State<AppState>,
+    actor: Actor,
+    Json(req): Json<BatchOperationRequest>,
+) -> Result<Json<BatchOperationResponse>, ApiError> {
+    let mut results = Vec::with_capacity(req.operations.len());
+    let mut conflicts = 0;
+
+    let schema_info = state.schema.as_schema_info();
+
+    for op_req in req.operations {
+        let timestamp = state.clock.new_timestamp();
+
+        let mut operation = match op_req.operation {
+            OperationDto::SetField {
+                entity_id,
+                field,
+                value,
+            } => Operation::set_field(
+                entity_id,
+                field,
+                json_to_field_value(&value),
+                &actor.0,
+                timestamp,
+            ),
+            OperationDto::InsertEntity {
+                entity_id,
+                entity_type,
+                parent_id,
+                position,
+            } => Operation::insert_entity(
+                entity_id,
+                entity_type,
+                parent_id.map(EntityId::new),
+                position,
+                &actor.0,
+                timestamp,
+            ),
+            OperationDto::RemoveEntity { entity_id } => {
+                Operation::remove_entity(entity_id, &actor.0, timestamp)
+            }
+            OperationDto::MoveEntity {
+                entity_id,
+                new_parent_id,
+                new_position,
+            } => {
+                Operation::move_entity(entity_id, new_parent_id, new_position, &actor.0, timestamp)
+            }
+        };
+
+        if let Some(intent) = op_req.intent {
+            operation = operation.with_intent(intent);
+        }
+
+        // Apply to document
+        let (conflict, conflict_info) = {
+            let mut doc = state
+                .document
+                .write()
+                .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+            match doc.apply(&operation, &schema_info, &state.clock)? {
+                ApplyResult::Applied => (false, None),
+                ApplyResult::Conflict(info) => {
+                    conflicts += 1;
+                    (
+                        true,
+                        Some(ConflictInfoDto {
+                            entity_id: info.entity_id.to_string(),
+                            field: info.field,
+                            contending_values: info
+                                .contending_values
+                                .iter()
+                                .map(field_value_to_json)
+                                .collect(),
+                        }),
+                    )
+                }
+            }
+        };
+
+        // Persist to store
+        {
+            let store = state
+                .store
+                .lock()
+                .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+            store.append_operation(&state.document_id, &operation)?;
+        }
+
+        results.push(SubmitOperationResponse {
+            operation_id: operation.id,
+            timestamp: operation.timestamp.to_string(),
+            conflict,
+            conflict_info,
+        });
+    }
+
+    let total = results.len();
+    Ok(Json(BatchOperationResponse {
+        results,
+        total,
+        conflicts,
+    }))
+}
+
+// ============================================================================
+// State
+// ============================================================================
+
+/// Get the full document state.
+pub async fn get_document_state(
+    State(state): State<AppState>,
+) -> Result<Json<DocumentStateResponse>, ApiError> {
+    let doc = state
+        .document
+        .read()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    let mut entities = Vec::new();
+    for (entity_id, entity) in &doc.entities {
+        let mut fields = serde_json::Map::new();
+        for (name, field_state) in &entity.fields {
+            fields.insert(name.clone(), field_value_to_json(&field_state.value()));
+        }
+
+        entities.push(EntityStateResponse {
+            entity_id: entity_id.to_string(),
+            entity_type: entity.entity_type.clone(),
+            fields,
+            parent_id: entity.parent_id.as_ref().map(|p| p.to_string()),
+            children: entity.children.values().map(|c| c.to_string()).collect(),
+            tombstoned: entity.tombstone.value,
+        });
+    }
+
+    let root_entities = doc.roots.values().map(|e| e.to_string()).collect();
+
+    Ok(Json(DocumentStateResponse {
+        entities,
+        root_entities,
+    }))
+}
+
+/// Get state for a specific entity.
+pub async fn get_entity_state(
+    State(state): State<AppState>,
+    Path(entity_path): Path<String>,
+) -> Result<Json<EntityStateResponse>, ApiError> {
+    let doc = state
+        .document
+        .read()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    let entity_id = EntityId::new(&entity_path);
+    let entity = doc
+        .get_entity(&entity_id)
+        .ok_or_else(|| ApiError::EntityNotFound(entity_path))?;
+
+    let mut fields = serde_json::Map::new();
+    for (name, field_state) in &entity.fields {
+        fields.insert(name.clone(), field_value_to_json(&field_state.value()));
+    }
+
+    Ok(Json(EntityStateResponse {
+        entity_id: entity_id.to_string(),
+        entity_type: entity.entity_type.clone(),
+        fields,
+        parent_id: entity.parent_id.as_ref().map(|p| p.to_string()),
+        children: entity.children.values().map(|c| c.to_string()).collect(),
+        tombstoned: entity.tombstone.value,
+    }))
+}
+
+// ============================================================================
+// Milestones
+// ============================================================================
+
+/// Create a milestone (project to git).
+pub async fn create_milestone(
+    State(state): State<AppState>,
+    _actor: Actor,
+    Json(req): Json<CreateMilestoneRequest>,
+) -> Result<Json<CreateMilestoneResponse>, ApiError> {
+    let projector = state
+        .projector
+        .as_ref()
+        .ok_or_else(|| ApiError::Internal("git projection not configured".to_string()))?;
+
+    // Get operations since last milestone
+    let stored_ops = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+
+        let ops_since = store.operations_since_milestone(&state.document_id)?;
+        let query = OperationQuery::new(&state.document_id).limit(ops_since as u32);
+        store.query_operations(&query)?
+    };
+
+    let operations: Vec<_> = stored_ops.into_iter().map(|s| s.operation).collect();
+
+    // Get current document state
+    let doc = state
+        .document
+        .read()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    // Determine environments
+    let environments = if req.environments.is_empty() {
+        vec!["production".to_string()]
+    } else {
+        req.environments
+    };
+
+    // Project to git
+    let result = projector.project(&doc, operations, &environments, &req.message)?;
+
+    // Record milestone in store
+    let milestone_id = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+
+        if let (Some(start), Some(end)) = (result.hlc_start, result.hlc_end) {
+            store.record_milestone(
+                &state.document_id,
+                Some(&result.commit_sha),
+                &start,
+                &end,
+                Some(&req.message),
+            )?
+        } else {
+            // No operations, create a placeholder range
+            let now = state.clock.new_timestamp();
+            store.record_milestone(
+                &state.document_id,
+                Some(&result.commit_sha),
+                &now,
+                &now,
+                Some(&req.message),
+            )?
+        }
+    };
+
+    Ok(Json(CreateMilestoneResponse {
+        milestone_id,
+        git_commit: Some(result.commit_sha),
+        operation_count: result.operation_count,
+        files_written: result.files_written,
+    }))
+}
+
+/// List milestones.
+pub async fn list_milestones(
+    State(state): State<AppState>,
+) -> Result<Json<Vec<MilestoneSummary>>, ApiError> {
+    let milestones = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+        store.list_milestones(&state.document_id)?
+    };
+
+    let summaries = milestones
+        .into_iter()
+        .map(|m| MilestoneSummary {
+            id: m.id,
+            message: m.message,
+            git_commit: m.git_commit,
+            created_at: m.created_at,
+            hlc_range_start: m.hlc_range_start.to_string(),
+            hlc_range_end: m.hlc_range_end.to_string(),
+        })
+        .collect();
+
+    Ok(Json(summaries))
+}
+
+/// Get milestone details.
+pub async fn get_milestone(
+    State(state): State<AppState>,
+    Path(milestone_id): Path<String>,
+) -> Result<Json<MilestoneSummary>, ApiError> {
+    let milestones = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+        store.list_milestones(&state.document_id)?
+    };
+
+    let milestone = milestones
+        .into_iter()
+        .find(|m| m.id.to_string() == milestone_id)
+        .ok_or_else(|| ApiError::EntityNotFound(format!("milestone {milestone_id}")))?;
+
+    Ok(Json(MilestoneSummary {
+        id: milestone.id,
+        message: milestone.message,
+        git_commit: milestone.git_commit,
+        created_at: milestone.created_at,
+        hlc_range_start: milestone.hlc_range_start.to_string(),
+        hlc_range_end: milestone.hlc_range_end.to_string(),
+    }))
+}
+
+// ============================================================================
+// Log
+// ============================================================================
+
+/// Get operation log.
+pub async fn get_operation_log(
+    State(state): State<AppState>,
+    Query(params): Query<LogQueryParams>,
+) -> Result<Json<OperationLogResponse>, ApiError> {
+    let (stored_ops, total) = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+
+        let mut query = OperationQuery::new(&state.document_id);
+
+        if let Some(ref entity_id) = params.entity_id {
+            query = query.for_entity(entity_id);
+        }
+        if let Some(ref actor_id) = params.actor_id {
+            query = query.by_actor(actor_id);
+        }
+        if let Some(limit) = params.limit {
+            query = query.limit(limit);
+        }
+
+        let stored_ops = store.query_operations(&query)?;
+        let total = store.operation_count(&state.document_id)?;
+        (stored_ops, total)
+    };
+
+    let limit = params.limit;
+    let operations: Vec<_> = stored_ops
+        .into_iter()
+        .map(|stored| {
+            let op = stored.operation;
+            OperationLogEntry {
+                id: op.id,
+                timestamp: op.timestamp.to_string(),
+                actor_id: op.actor.id.clone(),
+                actor_class: op.actor.class.to_string(),
+                intent: op.intent.clone(),
+                operation: operation_kind_to_log(&op.kind),
+            }
+        })
+        .collect();
+
+    let has_more = limit.is_some_and(|l| operations.len() >= l as usize);
+
+    Ok(Json(OperationLogResponse {
+        total,
+        has_more,
+        operations,
+    }))
+}
+
+/// Get operations for a specific entity.
+pub async fn get_entity_log(
+    State(state): State<AppState>,
+    Path(entity_path): Path<String>,
+    Query(params): Query<LogQueryParams>,
+) -> Result<Json<OperationLogResponse>, ApiError> {
+    let stored_ops = {
+        let store = state
+            .store
+            .lock()
+            .map_err(|e| ApiError::Internal(format!("store lock poisoned: {e}")))?;
+
+        let mut query = OperationQuery::new(&state.document_id).for_entity(&entity_path);
+
+        if let Some(ref actor_id) = params.actor_id {
+            query = query.by_actor(actor_id);
+        }
+        if let Some(limit) = params.limit {
+            query = query.limit(limit);
+        }
+
+        store.query_operations(&query)?
+    };
+
+    let limit = params.limit;
+    let operations: Vec<_> = stored_ops
+        .into_iter()
+        .map(|stored| {
+            let op = stored.operation;
+            OperationLogEntry {
+                id: op.id,
+                timestamp: op.timestamp.to_string(),
+                actor_id: op.actor.id.clone(),
+                actor_class: op.actor.class.to_string(),
+                intent: op.intent.clone(),
+                operation: operation_kind_to_log(&op.kind),
+            }
+        })
+        .collect();
+
+    let total = operations.len() as u64;
+    let has_more = limit.is_some_and(|l| operations.len() >= l as usize);
+
+    Ok(Json(OperationLogResponse {
+        operations,
+        total,
+        has_more,
+    }))
+}
