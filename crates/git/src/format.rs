@@ -1,6 +1,11 @@
 //! Output format serialization for config files.
+//!
+//! This module provides the original enum-based serialization API for backward
+//! compatibility. For the extensible plugin-based API, see the [`serializer`](crate::serializer)
+//! module.
 
 use crate::error::GitError;
+use crate::serializer::{global_registry, OutputSerializerExt, SerializerRegistry};
 use serde::Serialize;
 use std::collections::BTreeMap;
 
@@ -60,6 +65,20 @@ impl std::fmt::Display for OutputFormat {
     }
 }
 
+impl OutputFormat {
+    /// Returns the format ID string used by the serializer registry.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            OutputFormat::Yaml => "yaml",
+            OutputFormat::Json => "json",
+            OutputFormat::Toml => "toml",
+            OutputFormat::Kdl => "kdl",
+            OutputFormat::Xml => "xml",
+            OutputFormat::Hcl => "hcl",
+        }
+    }
+}
+
 /// Serializes a value to the specified output format.
 ///
 /// # Errors
@@ -102,6 +121,33 @@ pub fn serialize<T: Serialize>(value: &T, format: OutputFormat) -> Result<String
     }
 }
 
+/// Serializes a value using the global serializer registry.
+///
+/// This function looks up the serializer by format ID and delegates to it.
+/// Use this for extensible format support.
+///
+/// # Errors
+///
+/// Returns `GitError::UnknownFormat` if no serializer is registered for the format ID.
+/// Returns `GitError::SerializationError` if serialization fails.
+pub fn serialize_with_registry<T: Serialize>(
+    value: &T,
+    format_id: &str,
+    registry: &SerializerRegistry,
+) -> Result<String, GitError> {
+    let serializer = registry
+        .get(format_id)
+        .ok_or_else(|| GitError::UnknownFormat(format_id.to_string()))?;
+    serializer.serialize(value)
+}
+
+/// Serializes a value using the global registry by format ID.
+///
+/// Convenience wrapper around [`serialize_with_registry`] using the global registry.
+pub fn serialize_by_format_id<T: Serialize>(value: &T, format_id: &str) -> Result<String, GitError> {
+    serialize_with_registry(value, format_id, global_registry())
+}
+
 /// Converts a JSON value to a KDL-like string representation.
 fn json_to_kdl(value: &serde_json::Value) -> String {
     let mut output = String::new();
@@ -109,7 +155,7 @@ fn json_to_kdl(value: &serde_json::Value) -> String {
     output
 }
 
-fn json_to_kdl_impl(
+pub(crate) fn json_to_kdl_impl(
     value: &serde_json::Value,
     output: &mut String,
     indent: usize,
@@ -164,7 +210,7 @@ fn json_to_kdl_impl(
     }
 }
 
-fn escape_kdl_string(s: &str) -> String {
+pub(crate) fn escape_kdl_string(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
@@ -175,7 +221,7 @@ fn json_to_xml(value: &serde_json::Value, root_name: &str) -> String {
     output
 }
 
-fn json_to_xml_impl(value: &serde_json::Value, output: &mut String, name: &str, indent: usize) {
+pub(crate) fn json_to_xml_impl(value: &serde_json::Value, output: &mut String, name: &str, indent: usize) {
     let prefix = "  ".repeat(indent);
     match value {
         serde_json::Value::Object(map) => {
@@ -205,7 +251,7 @@ fn json_to_xml_impl(value: &serde_json::Value, output: &mut String, name: &str, 
     }
 }
 
-fn escape_xml(s: &str) -> String {
+pub(crate) fn escape_xml(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")
@@ -220,7 +266,7 @@ fn json_to_hcl(value: &serde_json::Value) -> String {
     output
 }
 
-fn json_to_hcl_impl(
+pub(crate) fn json_to_hcl_impl(
     value: &serde_json::Value,
     output: &mut String,
     indent: usize,
@@ -282,7 +328,7 @@ fn json_to_hcl_impl(
     }
 }
 
-fn escape_hcl_string(s: &str) -> String {
+pub(crate) fn escape_hcl_string(s: &str) -> String {
     s.replace('\\', "\\\\")
         .replace('"', "\\\"")
         .replace('\n', "\\n")

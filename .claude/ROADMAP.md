@@ -155,11 +155,31 @@ Efficient bulk import and update operations for large-scale config management.
 
 ---
 
-## Future Considerations
+## v0.7 — Format Support ✅
 
-### Format Support
-- Jsonnet / CUE support
-- Custom serializer plugin API
+Extended format support with Jsonnet and CUE import, plus a plugin API for custom output serializers.
+
+### Goals
+- [x] Jsonnet import support (pure Rust via jrsonnet)
+- [x] CUE import support (CLI-based, requires `cue` binary)
+- [x] Custom serializer plugin API (trait-based, backward compatible)
+- [x] Global serializer registry with built-in formats
+- [x] Registry-based serialization functions
+
+### Implementation
+- [x] Added `jrsonnet-evaluator` and `jrsonnet-stdlib` dependencies to CLI
+- [x] `evaluate_jsonnet()` function with import resolution and stdlib
+- [x] `evaluate_cue()` function via external `cue` CLI
+- [x] Default extensions updated to include `jsonnet` and `cue`
+- [x] New `OutputSerializer` trait in `conflux-git`
+- [x] `SerializerRegistry` with thread-safe registration
+- [x] Built-in serializers: YAML, JSON, TOML, KDL, XML, HCL
+- [x] `register_serializer()` for custom format plugins
+- [x] `serialize_with_registry()` and `serialize_by_format_id()` functions
+
+---
+
+## Future Considerations
 
 ### Integrations
 - Kubernetes operator (CRD-based config management)

@@ -35,6 +35,8 @@ chrono = { workspace = true }
 whoami = { workspace = true }
 glob = "0.3"
 kdl = { workspace = true }
+jrsonnet-evaluator = "0.5.0-pre97"
+jrsonnet-stdlib = "0.5.0-pre97"
 
 [dev-dependencies]
 tempfile = { workspace = true }

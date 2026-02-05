@@ -40,4 +40,8 @@ pub enum GitError {
     /// No changes to commit.
     #[error("no changes to commit")]
     NothingToCommit,
+
+    /// Serialization error from custom serializer.
+    #[error("serialization error: {0}")]
+    SerializationError(String),
 }

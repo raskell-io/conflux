@@ -23,6 +23,8 @@ thiserror = { workspace = true }
 tracing = { workspace = true }
 chrono = { workspace = true }
 uuid = { workspace = true }
+lazy_static = "1.4"
+erased-serde = "0.4"
 
 [dev-dependencies]
 insta = { workspace = true }

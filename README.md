@@ -47,7 +47,7 @@ cargo install conflux
 conflux init --schema schema.toml
 
 # Import existing config files
-conflux import ./configs/ --format yaml --entity-type service
+conflux import ./configs/ --entity-type service
 
 # Make a change
 conflux set route.api weight 80 --intent "shifting traffic for canary"
@@ -107,7 +107,7 @@ conflux daemon --port 8080
 | **Causal Ordering** | Hybrid logical clocks for causally consistent, totally ordered operations |
 | **Environment Overlays** | Environments as a data dimension, not git branches. Promote with an operation, not a merge |
 | **Git Milestones** | Periodic snapshots to git with structured commit messages and operation attribution |
-| **Format Agnostic** | Import and export YAML, JSON, TOML, KDL, XML, TF (HCL). The CRDT layer is format-independent |
+| **Format Agnostic** | Import YAML, JSON, TOML, KDL, Jsonnet, CUE. Export to YAML, JSON, TOML, KDL, XML, HCL. Extensible via serializer plugins |
 | **Operation Log** | Append-only audit trail of every mutation with actor identity and intent |
 | **Post-Merge Validation** | Schema constraints enforced after every merge — convergence + correctness |
 
@@ -176,7 +176,7 @@ Operations: 3
 | Command | Description |
 |---------|-------------|
 | `init` | Initialize a new Conflux project |
-| `import` | Import existing JSON/YAML/TOML config files |
+| `import` | Import existing config files (YAML, JSON, TOML, KDL, Jsonnet, CUE) |
 | `set` | Set a field value on an entity |
 | `get` | Get entity or field values |
 | `diff` | Show changes since a milestone |
@@ -238,7 +238,7 @@ Each crate has its own `docs/` directory with detailed documentation.
 | [`conflux-core`](crates/core/) | CRDT document model, typed operations, per-field merge semantics |
 | [`conflux-schema`](crates/schema/) | Schema definition language (TOML) for config structure and merge rules |
 | [`conflux-store`](crates/store/) | Persistent operation log and snapshot storage (SQLite) |
-| [`conflux-git`](crates/git/) | Git milestone projection and config format serialization |
+| [`conflux-git`](crates/git/) | Git milestone projection, config format serialization, and serializer plugin API |
 | [`conflux-api`](crates/api/) | HTTP and gRPC API server for machine actors |
 | [`conflux`](crates/cli/) | CLI and daemon entry point |
 

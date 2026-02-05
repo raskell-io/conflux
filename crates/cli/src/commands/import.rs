@@ -7,6 +7,10 @@ use clap::Args;
 use conflux_core::{Clock, Document, EntityId, FieldValue, Operation};
 use conflux_schema::Schema;
 use conflux_store::SqliteStore;
+use jrsonnet_evaluator::manifest::JsonFormat;
+use jrsonnet_evaluator::trace::PathResolver;
+use jrsonnet_evaluator::{FileImportResolver, StateBuilder};
+use jrsonnet_stdlib::ContextInitializer;
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
@@ -45,8 +49,8 @@ pub struct ImportArgs {
     pub recursive: bool,
 
     /// File extensions to include (comma-separated, e.g., "yaml,json,toml,kdl").
-    /// Defaults to yaml,yml,json,toml,kdl.
-    #[arg(long, default_value = "yaml,yml,json,toml,kdl")]
+    /// Defaults to yaml,yml,json,toml,kdl,jsonnet,cue.
+    #[arg(long, default_value = "yaml,yml,json,toml,kdl,jsonnet,cue")]
     pub extensions: String,
 
     /// Use filename (without extension) as entity ID prefix.
@@ -325,11 +329,75 @@ fn parse_config_file(
             .map(|v| serde_json::to_value(v).unwrap())
             .context("parsing TOML")?,
         "kdl" => kdl_to_json(content).context("parsing KDL")?,
-        _ => anyhow::bail!("unsupported file format: {extension}. Supported: json, yaml, toml, kdl"),
+        "jsonnet" | "libsonnet" => evaluate_jsonnet(path, content).context("evaluating Jsonnet")?,
+        "cue" => evaluate_cue(path).context("evaluating CUE")?,
+        _ => anyhow::bail!(
+            "unsupported file format: {extension}. Supported: json, yaml, toml, kdl, jsonnet, cue"
+        ),
     };
 
     // Convert JSON to entity map
     json_to_entities(&value)
+}
+
+/// Evaluates a Jsonnet file and returns the resulting JSON value.
+///
+/// Uses the jrsonnet pure-Rust implementation for evaluation.
+fn evaluate_jsonnet(path: &Path, content: &str) -> Result<serde_json::Value> {
+    // Get parent directory for imports
+    let parent = path.parent().unwrap_or(Path::new("."));
+
+    // Build the evaluation state with import resolver and stdlib
+    let mut builder = StateBuilder::default();
+    builder
+        .import_resolver(FileImportResolver::new(vec![parent.to_path_buf()]))
+        .context_initializer(ContextInitializer::new(PathResolver::Relative(
+            parent.to_path_buf(),
+        )));
+    let state = builder.build();
+
+    // Evaluate the snippet
+    let name = path.to_string_lossy().into_owned();
+    let val = state
+        .evaluate_snippet(name, content)
+        .map_err(|e| anyhow::anyhow!("Jsonnet evaluation error: {e}"))?;
+
+    // Manifest to JSON string using JsonFormat
+    let json_str = val
+        .manifest(JsonFormat::default())
+        .map_err(|e| anyhow::anyhow!("Jsonnet manifest error: {e}"))?;
+
+    serde_json::from_str(&json_str).context("parsing Jsonnet output as JSON")
+}
+
+/// Evaluates a CUE file and returns the resulting JSON value.
+///
+/// Requires the `cue` CLI to be installed and available in PATH.
+fn evaluate_cue(path: &Path) -> Result<serde_json::Value> {
+    // Check if cue is available
+    let check = std::process::Command::new("cue").arg("version").output();
+
+    if check.is_err() || !check.as_ref().unwrap().status.success() {
+        anyhow::bail!(
+            "CUE CLI not found. Install from https://cuelang.org/docs/install/ to import .cue files"
+        );
+    }
+
+    let output = std::process::Command::new("cue")
+        .args(["export", "--out", "json"])
+        .arg(path)
+        .current_dir(path.parent().unwrap_or(Path::new(".")))
+        .output()
+        .context("running cue export")?;
+
+    if !output.status.success() {
+        anyhow::bail!(
+            "CUE export failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    serde_json::from_slice(&output.stdout).context("parsing CUE output as JSON")
 }
 
 /// Converts a JSON value to entity ID -> fields mapping.
@@ -512,6 +580,95 @@ service1 {
 
         assert!(result.contains_key("service1"));
         let fields = result.get("service1").unwrap();
+        assert_eq!(fields.get("replicas"), Some(&FieldValue::Int(3)));
+        assert_eq!(
+            fields.get("image"),
+            Some(&FieldValue::String("nginx".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_jsonnet_basic() {
+        let content = r#"{ name: "test", count: 1 + 2 }"#;
+        let path = PathBuf::from("test.jsonnet");
+        let result = parse_config_file(&path, content).unwrap();
+
+        // Single object without nested objects becomes a "default" entity
+        assert!(result.contains_key("default"));
+        let fields = result.get("default").unwrap();
+        assert_eq!(
+            fields.get("name"),
+            Some(&FieldValue::String("test".to_string()))
+        );
+        assert_eq!(fields.get("count"), Some(&FieldValue::Int(3)));
+    }
+
+    #[test]
+    fn parse_jsonnet_with_object_output() {
+        let content = r#"{ service1: { replicas: 3, image: "nginx" } }"#;
+        let path = PathBuf::from("test.jsonnet");
+        let result = parse_config_file(&path, content).unwrap();
+
+        assert!(result.contains_key("service1"));
+        let fields = result.get("service1").unwrap();
+        assert_eq!(fields.get("replicas"), Some(&FieldValue::Int(3)));
+        assert_eq!(
+            fields.get("image"),
+            Some(&FieldValue::String("nginx".to_string()))
+        );
+    }
+
+    #[test]
+    fn parse_jsonnet_with_computation() {
+        let content = r#"
+        local base = { replicas: 2 };
+        {
+            service1: base + { image: "nginx" },
+            service2: base + { image: "redis", replicas: 5 },
+        }
+        "#;
+        let path = PathBuf::from("test.jsonnet");
+        let result = parse_config_file(&path, content).unwrap();
+
+        assert!(result.contains_key("service1"));
+        assert!(result.contains_key("service2"));
+
+        let s1 = result.get("service1").unwrap();
+        assert_eq!(s1.get("replicas"), Some(&FieldValue::Int(2)));
+        assert_eq!(
+            s1.get("image"),
+            Some(&FieldValue::String("nginx".to_string()))
+        );
+
+        let s2 = result.get("service2").unwrap();
+        assert_eq!(s2.get("replicas"), Some(&FieldValue::Int(5)));
+        assert_eq!(
+            s2.get("image"),
+            Some(&FieldValue::String("redis".to_string()))
+        );
+    }
+
+    // CUE test requires the cue CLI to be installed, so we mark it as ignored
+    // Run with: cargo test --package conflux -- --ignored
+    #[test]
+    #[ignore]
+    fn parse_cue_basic() {
+        use std::io::Write;
+
+        // Create a temporary CUE file
+        let dir = tempfile::tempdir().unwrap();
+        let cue_path = dir.path().join("test.cue");
+        let mut file = std::fs::File::create(&cue_path).unwrap();
+        writeln!(file, "service1: replicas: 3").unwrap();
+        writeln!(file, "service1: image: \"nginx\"").unwrap();
+        drop(file);
+
+        // CUE files are evaluated from the file directly, not from content
+        let result = evaluate_cue(&cue_path).unwrap();
+        let entities = json_to_entities(&result).unwrap();
+
+        assert!(entities.contains_key("service1"));
+        let fields = entities.get("service1").unwrap();
         assert_eq!(fields.get("replicas"), Some(&FieldValue::Int(3)));
         assert_eq!(
             fields.get("image"),

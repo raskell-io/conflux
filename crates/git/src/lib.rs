@@ -40,8 +40,17 @@ pub mod commit;
 pub mod error;
 pub mod format;
 pub mod projector;
+pub mod serializer;
 
 pub use commit::CommitBuilder;
 pub use error::GitError;
-pub use format::{serialize, serialize_document, OutputFile, OutputFormat};
+pub use format::{
+    serialize, serialize_by_format_id, serialize_document, serialize_with_registry, OutputFile,
+    OutputFormat,
+};
 pub use projector::{MilestoneProjector, MilestoneResult, ProjectorConfig};
+pub use serializer::{
+    global_registry, register_serializer, HclSerializer, JsonSerializer, KdlSerializer,
+    OutputSerializer, OutputSerializerExt, SerializerRegistry, TomlSerializer, XmlSerializer,
+    YamlSerializer,
+};
