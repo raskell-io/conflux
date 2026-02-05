@@ -52,9 +52,13 @@ anyhow = "1.0"
 
 # API
 tonic = { version = "0.14", features = ["transport"] }
+tonic-prost = "0.14"
+tonic-prost-build = "0.14"
 prost = "0.14"
 axum = "0.8"
 tower = "0.5"
+tokio-stream = { version = "0.1", features = ["sync"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Git
 gix = "0.72"

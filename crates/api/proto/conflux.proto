@@ -1,0 +1,163 @@
+syntax = "proto3";
+
+package conflux.v1;
+
+// Conflux gRPC service for reactive state watching and operations.
+service ConfluxService {
+  // Watch for state changes (server-streaming).
+  // Returns a stream of StateChange events whenever document state changes.
+  rpc WatchState(WatchRequest) returns (stream StateChange);
+
+  // Submit an operation.
+  rpc SubmitOperation(SubmitRequest) returns (SubmitResponse);
+
+  // Get current document state.
+  rpc GetState(GetStateRequest) returns (GetStateResponse);
+
+  // Get entity state.
+  rpc GetEntity(GetEntityRequest) returns (GetEntityResponse);
+}
+
+// Watch request configuration.
+message WatchRequest {
+  // Filter by entity ID prefix (optional).
+  optional string entity_filter = 1;
+
+  // Filter by field name (optional).
+  optional string field_filter = 2;
+
+  // Include initial state snapshot before streaming changes.
+  bool include_initial_state = 3;
+}
+
+// A state change event.
+message StateChange {
+  // Type of change.
+  ChangeType change_type = 1;
+
+  // Entity that changed.
+  string entity_id = 2;
+
+  // Field that changed (if applicable).
+  optional string field = 3;
+
+  // New value as JSON.
+  optional string value_json = 4;
+
+  // Actor who made the change.
+  string actor_id = 5;
+
+  // Actor class.
+  string actor_class = 6;
+
+  // HLC timestamp.
+  string timestamp = 7;
+
+  // Optional intent.
+  optional string intent = 8;
+
+  // Operation ID.
+  string operation_id = 9;
+}
+
+enum ChangeType {
+  CHANGE_TYPE_UNSPECIFIED = 0;
+  CHANGE_TYPE_SET_FIELD = 1;
+  CHANGE_TYPE_INSERT_ENTITY = 2;
+  CHANGE_TYPE_REMOVE_ENTITY = 3;
+  CHANGE_TYPE_MOVE_ENTITY = 4;
+  CHANGE_TYPE_SET_OVERRIDE = 5;
+  CHANGE_TYPE_RESOLVE_CONFLICT = 6;
+}
+
+// Submit operation request.
+message SubmitRequest {
+  // Actor identity.
+  string actor_id = 1;
+  string actor_class = 2;
+
+  // Operation details.
+  oneof operation {
+    SetFieldOp set_field = 10;
+    InsertEntityOp insert_entity = 11;
+    RemoveEntityOp remove_entity = 12;
+    SetOverrideOp set_override = 13;
+    ResolveConflictOp resolve_conflict = 14;
+  }
+
+  // Optional intent message.
+  optional string intent = 20;
+}
+
+message SetFieldOp {
+  string entity_id = 1;
+  string field = 2;
+  string value_json = 3;
+}
+
+message InsertEntityOp {
+  string entity_id = 1;
+  string entity_type = 2;
+  optional string parent_id = 3;
+  optional int64 position = 4;
+  map<string, string> initial_fields_json = 5;
+}
+
+message RemoveEntityOp {
+  string entity_id = 1;
+}
+
+message SetOverrideOp {
+  string entity_id = 1;
+  string field = 2;
+  string environment = 3;
+  string value_json = 4;
+}
+
+message ResolveConflictOp {
+  string entity_id = 1;
+  string field = 2;
+  optional string environment = 3;
+  string value_json = 4;
+}
+
+message SubmitResponse {
+  // Operation ID assigned.
+  string operation_id = 1;
+
+  // HLC timestamp assigned.
+  string timestamp = 2;
+
+  // Whether operation resulted in a conflict needing review.
+  bool has_conflict = 3;
+}
+
+// Get full document state.
+message GetStateRequest {
+  // Environment to resolve (optional, uses base if not specified).
+  optional string environment = 1;
+}
+
+message GetStateResponse {
+  // Full state as JSON.
+  string state_json = 1;
+
+  // Latest operation timestamp.
+  string latest_timestamp = 2;
+}
+
+// Get single entity state.
+message GetEntityRequest {
+  string entity_id = 1;
+
+  // Environment to resolve (optional).
+  optional string environment = 2;
+}
+
+message GetEntityResponse {
+  // Entity state as JSON.
+  string entity_json = 1;
+
+  // Whether entity exists.
+  bool exists = 2;
+}

@@ -13,3 +13,4 @@ pub mod promote;
 pub mod resolve;
 pub mod set;
 pub mod status;
+pub mod watch;

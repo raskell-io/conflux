@@ -54,11 +54,15 @@
 pub mod auth;
 pub mod dto;
 pub mod error;
+pub mod grpc;
 pub mod handlers;
 pub mod server;
 pub mod state;
+pub mod webhook;
 
 pub use auth::Actor;
 pub use error::ApiError;
+pub use grpc::{pb, ConfluxGrpcService, StateChangeEvent};
 pub use server::{build_router, run_server, ServerConfig, DEFAULT_HTTP_PORT};
 pub use state::AppState;
+pub use webhook::{Webhook, WebhookConfig, WebhookManager};
