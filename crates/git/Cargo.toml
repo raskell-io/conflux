@@ -21,8 +21,8 @@ quick-xml = { workspace = true }
 hcl-rs = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-gix = { workspace = true }
 chrono = { workspace = true }
+uuid = { workspace = true }
 
 [dev-dependencies]
 insta = { workspace = true }
