@@ -45,8 +45,7 @@ pub trait SchemaInfo {
 
     /// Returns whether an environment is defined in the schema.
     fn has_environment(&self, env: &str) -> bool {
-        self.base_environment().map_or(false, |base| base == env)
-            || self.environment_parent(env).is_some()
+        self.base_environment() == Some(env) || self.environment_parent(env).is_some()
     }
 }
 

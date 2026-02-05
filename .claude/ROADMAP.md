@@ -55,7 +55,7 @@ Per-environment field overrides and promotion workflow.
 - [x] Environment-aware field resolution (inheritance chain lookup)
 - [x] Environment API endpoints (`/v1/envs`, `/v1/envs/{env}/state`, `/v1/envs/diff`)
 - [x] `conflux promote` command (staging → production as an operation)
-- [ ] Environment-aware `conflux diff`
+- [x] Environment-aware `conflux diff`
 - [ ] Per-environment milestone projection (separate directories)
 
 ### Current Status
@@ -64,6 +64,7 @@ Per-environment field overrides and promotion workflow.
 - [x] Core field resolution with environment context
 - [x] Environment API endpoints (list, state, diff)
 - [x] Promote command fully functional
+- [x] Environment-aware diff (--from-env/--to-env and --env options)
 
 ---
 
