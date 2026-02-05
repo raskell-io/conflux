@@ -51,8 +51,8 @@ The minimum viable artifact: a single-node daemon that accepts typed operations,
 Per-environment field overrides and promotion workflow.
 
 ### Goals
-- [ ] `SetEnvironmentField` operation type in `conflux-core`
-- [ ] Environment-aware field resolution (inheritance chain lookup)
+- [x] `SetOverride` operation type in `conflux-core`
+- [x] Environment-aware field resolution (inheritance chain lookup)
 - [ ] Environment API endpoints (`/v1/envs/{env}/state`, `/v1/envs/diff`)
 - [ ] `conflux promote` command (staging → production as an operation)
 - [ ] Environment-aware `conflux diff`
@@ -61,7 +61,7 @@ Per-environment field overrides and promotion workflow.
 ### Current Status
 - [x] Schema parsing for environment definitions
 - [x] Environment inheritance chain validation
-- [ ] Core field resolution with environment context (NOT IMPLEMENTED)
+- [x] Core field resolution with environment context
 - [ ] Promote command is placeholder only
 
 ---
