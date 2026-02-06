@@ -3,6 +3,7 @@
 use crate::webhook::WebhookManager;
 use conflux_core::{Clock, Document};
 use conflux_git::{MilestoneProjector, ProjectorConfig};
+use conflux_rbac::RbacAuthorizer;
 use conflux_schema::Schema;
 use conflux_store::SqliteStore;
 use std::path::PathBuf;
@@ -25,6 +26,8 @@ pub struct AppState {
     pub document_id: String,
     /// Webhook manager for event delivery.
     pub webhooks: Arc<WebhookManager>,
+    /// RBAC authorizer (optional - if None, all operations are allowed).
+    pub authorizer: Option<Arc<RbacAuthorizer>>,
 }
 
 impl AppState {
@@ -38,6 +41,7 @@ impl AppState {
             projector: None,
             document_id: document_id.into(),
             webhooks: Arc::new(WebhookManager::new()),
+            authorizer: None,
         }
     }
 
@@ -56,6 +60,7 @@ impl AppState {
             projector,
             document_id: document_id.into(),
             webhooks: Arc::new(WebhookManager::new()),
+            authorizer: None,
         }
     }
 
@@ -69,6 +74,15 @@ impl AppState {
     /// Configures a custom webhook manager.
     pub fn with_webhook_manager(mut self, webhooks: Arc<WebhookManager>) -> Self {
         self.webhooks = webhooks;
+        self
+    }
+
+    /// Configures RBAC authorization.
+    ///
+    /// When set, all operations will be checked against the RBAC policy.
+    /// When not set (None), all operations are allowed.
+    pub fn with_authorizer(mut self, authorizer: RbacAuthorizer) -> Self {
+        self.authorizer = Some(Arc::new(authorizer));
         self
     }
 }

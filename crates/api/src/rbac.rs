@@ -182,6 +182,17 @@ pub fn check_promote_authz(
     }
 }
 
+/// Checks authorization for admin operations (webhooks, audit, etc.).
+pub fn check_admin_authz(authorizer: &RbacAuthorizer, actor: &ActorId) -> Result<(), ApiError> {
+    let resource = Resource::global();
+    let ctx = AuthzContext::new(actor.clone(), Action::Admin, resource);
+
+    match authorizer.authorize(&ctx) {
+        AuthzResult::Allowed => Ok(()),
+        AuthzResult::Denied(reason) => Err(reason.into()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

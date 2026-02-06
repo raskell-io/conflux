@@ -42,6 +42,11 @@ pub async fn submit_operation(
     actor: Actor,
     Json(req): Json<SubmitOperationRequest>,
 ) -> Result<Json<SubmitOperationResponse>, ApiError> {
+    // Check RBAC authorization if enabled
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_operation_authz(authorizer, &actor.0, &req.operation)?;
+    }
+
     let timestamp = state.clock.new_timestamp();
 
     // Convert DTO to core Operation
@@ -160,6 +165,13 @@ pub async fn batch_operations(
     actor: Actor,
     Json(req): Json<BatchOperationRequest>,
 ) -> Result<Json<BatchOperationResponse>, ApiError> {
+    // Check RBAC authorization for all operations first
+    if let Some(ref authorizer) = state.authorizer {
+        for op_req in &req.operations {
+            crate::rbac::check_operation_authz(authorizer, &actor.0, &op_req.operation)?;
+        }
+    }
+
     let mut results = Vec::with_capacity(req.operations.len());
     let mut conflicts = 0;
 
@@ -362,9 +374,14 @@ pub async fn get_entity_state(
 /// Create a milestone (project to git).
 pub async fn create_milestone(
     State(state): State<AppState>,
-    _actor: Actor,
+    actor: Actor,
     Json(req): Json<CreateMilestoneRequest>,
 ) -> Result<Json<CreateMilestoneResponse>, ApiError> {
+    // Check RBAC authorization if enabled
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_milestone_authz(authorizer, &actor.0)?;
+    }
+
     let projector = state
         .projector
         .as_ref()
@@ -770,8 +787,14 @@ fn find_field_source(
 /// Register a new webhook.
 pub async fn register_webhook(
     State(state): State<AppState>,
+    actor: Actor,
     Json(req): Json<RegisterWebhookRequest>,
 ) -> Result<Json<RegisterWebhookResponse>, ApiError> {
+    // Check RBAC authorization if enabled (requires admin)
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_admin_authz(authorizer, &actor.0)?;
+    }
+
     let mut config = WebhookConfig::new(req.url.clone());
 
     if let Some(filter) = req.entity_filter {
@@ -880,8 +903,14 @@ pub async fn get_webhook(
 /// Delete a webhook.
 pub async fn delete_webhook(
     State(state): State<AppState>,
+    actor: Actor,
     Path(webhook_id): Path<String>,
 ) -> Result<Json<serde_json::Value>, ApiError> {
+    // Check RBAC authorization if enabled (requires admin)
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_admin_authz(authorizer, &actor.0)?;
+    }
+
     let id = Uuid::parse_str(&webhook_id)
         .map_err(|_| ApiError::EntityNotFound(format!("invalid webhook id: {webhook_id}")))?;
 
@@ -900,9 +929,15 @@ pub async fn delete_webhook(
 /// Update a webhook (placeholder - updates require re-registration for now).
 pub async fn update_webhook(
     State(state): State<AppState>,
+    actor: Actor,
     Path(webhook_id): Path<String>,
     Json(req): Json<UpdateWebhookRequest>,
 ) -> Result<Json<WebhookDto>, ApiError> {
+    // Check RBAC authorization if enabled (requires admin)
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_admin_authz(authorizer, &actor.0)?;
+    }
+
     let id = Uuid::parse_str(&webhook_id)
         .map_err(|_| ApiError::EntityNotFound(format!("invalid webhook id: {webhook_id}")))?;
 
@@ -976,11 +1011,17 @@ pub async fn update_webhook(
 /// Returns a streaming response with content-type application/x-ndjson.
 pub async fn export_audit(
     State(state): State<AppState>,
+    actor: Actor,
     Query(params): Query<crate::dto::AuditExportParams>,
 ) -> Result<axum::response::Response, ApiError> {
     use axum::body::Body;
     use axum::http::header;
     use conflux_store::audit::{AuditExportQuery, AuditExporter};
+
+    // Check RBAC authorization if enabled (requires admin for audit export)
+    if let Some(ref authorizer) = state.authorizer {
+        crate::rbac::check_admin_authz(authorizer, &actor.0)?;
+    }
 
     // Build the query
     let mut query = AuditExportQuery::new(&state.document_id);

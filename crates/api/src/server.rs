@@ -448,6 +448,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/audit/export")
+                    .header("x-conflux-actor", "admin")
+                    .header("x-conflux-actor-class", "human")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -490,6 +492,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/audit/export")
+                    .header("x-conflux-actor", "admin")
+                    .header("x-conflux-actor-class", "human")
                     .body(Body::empty())
                     .unwrap(),
             )
@@ -517,6 +521,8 @@ mod tests {
             .oneshot(
                 Request::builder()
                     .uri("/v1/audit/export?actor=test-user&entity=route")
+                    .header("x-conflux-actor", "admin")
+                    .header("x-conflux-actor-class", "human")
                     .body(Body::empty())
                     .unwrap(),
             )
