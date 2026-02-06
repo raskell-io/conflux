@@ -1,5 +1,6 @@
 //! HTTP server setup and routing.
 
+use crate::auth::{ApiKeyAuthenticator, AuthConfig, AuthLayer, MtlsAuthenticator};
 use crate::handlers;
 use crate::state::AppState;
 use axum::routing::{delete, get, post, put};
@@ -15,12 +16,21 @@ pub const DEFAULT_HTTP_PORT: u16 = 9400;
 pub struct ServerConfig {
     /// HTTP listen address.
     pub http_addr: SocketAddr,
+    /// Authentication configuration.
+    pub auth: Option<AuthConfig>,
+    /// API key authenticator (if using API key auth).
+    pub api_key_auth: Option<ApiKeyAuthenticator>,
+    /// mTLS authenticator (if using mTLS auth).
+    pub mtls_auth: Option<MtlsAuthenticator>,
 }
 
 impl Default for ServerConfig {
     fn default() -> Self {
         Self {
             http_addr: SocketAddr::from(([0, 0, 0, 0], DEFAULT_HTTP_PORT)),
+            auth: None,
+            api_key_auth: None,
+            mtls_auth: None,
         }
     }
 }
@@ -42,10 +52,35 @@ impl ServerConfig {
         self.http_addr = SocketAddr::from(([0, 0, 0, 0], port));
         self
     }
+
+    /// Configures authentication.
+    pub fn with_auth(mut self, auth: AuthConfig) -> Self {
+        self.auth = Some(auth);
+        self
+    }
+
+    /// Sets the API key authenticator.
+    pub fn with_api_key_auth(mut self, auth: ApiKeyAuthenticator) -> Self {
+        self.api_key_auth = Some(auth);
+        self
+    }
+
+    /// Sets the mTLS authenticator.
+    pub fn with_mtls_auth(mut self, auth: MtlsAuthenticator) -> Self {
+        self.mtls_auth = Some(auth);
+        self
+    }
 }
 
-/// Builds the HTTP router with all routes.
+/// Builds the HTTP router with all routes and permissive authentication.
+///
+/// This is primarily for testing. Use [`build_router_with_auth`] for production.
 pub fn build_router(state: AppState) -> Router {
+    build_router_with_auth(state, AuthLayer::permissive())
+}
+
+/// Builds the HTTP router with all routes and authentication middleware.
+pub fn build_router_with_auth(state: AppState, auth_layer: AuthLayer) -> Router {
     Router::new()
         // Health
         .route("/health", get(handlers::health))
@@ -77,8 +112,22 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/webhooks/{webhook_id}", delete(handlers::delete_webhook))
         // Audit
         .route("/v1/audit/export", get(handlers::export_audit))
+        // Auth middleware (wraps all routes)
+        .layer(auth_layer)
         // State
         .with_state(state)
+}
+
+/// Creates an auth layer from server config.
+pub fn auth_layer_from_config(config: &ServerConfig) -> AuthLayer {
+    match &config.auth {
+        Some(auth_config) => AuthLayer::new(
+            auth_config.clone(),
+            config.api_key_auth.clone(),
+            config.mtls_auth.clone(),
+        ),
+        None => AuthLayer::permissive(),
+    }
 }
 
 /// Runs the HTTP server.
@@ -87,7 +136,8 @@ pub fn build_router(state: AppState) -> Router {
 ///
 /// Returns an error if binding or serving fails.
 pub async fn run_server(config: ServerConfig, state: AppState) -> Result<(), std::io::Error> {
-    let router = build_router(state);
+    let auth_layer = auth_layer_from_config(&config);
+    let router = build_router_with_auth(state, auth_layer);
     let listener = TcpListener::bind(config.http_addr).await?;
 
     tracing::info!("Conflux API server listening on {}", config.http_addr);

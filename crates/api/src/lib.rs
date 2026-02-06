@@ -66,10 +66,16 @@ pub mod server;
 pub mod state;
 pub mod webhook;
 
-pub use auth::{Actor, AuthConfig, AuthLayer, AuthMode, AuthorizedActor};
+pub use auth::{
+    Actor, ApiKeyAuthenticator, AuthConfig, AuthLayer, AuthMode, AuthorizedActor,
+    MtlsAuthenticator,
+};
 pub use error::ApiError;
 pub use grpc::{pb, ConfluxGrpcService, StateChangeEvent};
-pub use server::{build_router, run_server, ServerConfig, DEFAULT_HTTP_PORT};
+pub use server::{
+    auth_layer_from_config, build_router, build_router_with_auth, run_server, ServerConfig,
+    DEFAULT_HTTP_PORT,
+};
 pub use state::AppState;
 pub use webhook::{
     ConflictPayload, GitOpsInvolvedObject, GitOpsMetadata, GitOpsPayload, GitOpsSource,
