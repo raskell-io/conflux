@@ -84,44 +84,47 @@ enum Commands {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
 
-    // Handle init specially - it doesn't need an existing config
-    if let Commands::Init(args) = cli.command {
-        return commands::init::run(args);
-    }
-
-    // Load configuration
-    let (config, config_path) = if let Some(path) = cli.config {
-        let config = Config::from_file(&path)?;
-        (config, path)
-    } else {
-        Config::find_and_load()?
-    };
-
-    // Get the directory containing the config file
-    let config_dir = config_path
-        .parent()
-        .map(|p| p.to_path_buf())
-        .unwrap_or_else(|| std::path::PathBuf::from("."));
-
+    // Handle commands that don't need an existing config
     match cli.command {
-        Commands::Init(_) => unreachable!(), // Handled above
-        Commands::Import(args) => commands::import::run(args, &config, &config_dir),
-        Commands::Set(args) => commands::set::run(args, &config, &config_dir),
-        Commands::BulkSet(args) => commands::bulk_set::run(args, &config, &config_dir),
-        Commands::Get(args) => commands::get::run(args, &config, &config_dir),
-        Commands::Diff(args) => commands::diff::run(args, &config, &config_dir),
-        Commands::Log(args) => commands::log::run(args, &config, &config_dir),
-        Commands::Blame(args) => commands::blame::run(args, &config, &config_dir),
-        Commands::Status(args) => commands::status::run(args, &config, &config_dir),
-        Commands::Milestone(args) => commands::milestone::run(args, &config, &config_dir),
-        Commands::Promote(args) => commands::promote::run(args, &config, &config_dir),
-        Commands::Conflicts(args) => commands::conflicts::run(args, &config, &config_dir),
-        Commands::Resolve(args) => commands::resolve::run(args, &config, &config_dir),
-        Commands::Watch(args) => commands::watch::run(args, &config, &config_dir).await,
-        Commands::Daemon(args) => commands::daemon::run(args, &config, &config_dir).await,
-        Commands::Auth(args) => commands::auth::run(args),
-        Commands::Keys(args) => commands::keys::run(args),
-        Commands::Rbac(args) => commands::rbac::run(args),
-        Commands::Audit(args) => commands::audit::run(args, &config, &config_dir),
+        Commands::Init(args) => return commands::init::run(args),
+        Commands::Auth(args) => return commands::auth::run(args),
+        Commands::Keys(args) => return commands::keys::run(args),
+        Commands::Rbac(args) => return commands::rbac::run(args),
+        command => {
+            // Load configuration for commands that need it
+            let (config, config_path) = if let Some(path) = cli.config {
+                let cfg = Config::from_file(&path)?;
+                (cfg, path)
+            } else {
+                Config::find_and_load()?
+            };
+
+            // Get the directory containing the config file
+            let config_dir = config_path
+                .parent()
+                .map(|p| p.to_path_buf())
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+
+            match command {
+                Commands::Init(_) | Commands::Auth(_) | Commands::Keys(_) | Commands::Rbac(_) => {
+                    unreachable!() // Handled above
+                }
+                Commands::Import(args) => commands::import::run(args, &config, &config_dir),
+                Commands::Set(args) => commands::set::run(args, &config, &config_dir),
+                Commands::BulkSet(args) => commands::bulk_set::run(args, &config, &config_dir),
+                Commands::Get(args) => commands::get::run(args, &config, &config_dir),
+                Commands::Diff(args) => commands::diff::run(args, &config, &config_dir),
+                Commands::Log(args) => commands::log::run(args, &config, &config_dir),
+                Commands::Blame(args) => commands::blame::run(args, &config, &config_dir),
+                Commands::Status(args) => commands::status::run(args, &config, &config_dir),
+                Commands::Milestone(args) => commands::milestone::run(args, &config, &config_dir),
+                Commands::Promote(args) => commands::promote::run(args, &config, &config_dir),
+                Commands::Conflicts(args) => commands::conflicts::run(args, &config, &config_dir),
+                Commands::Resolve(args) => commands::resolve::run(args, &config, &config_dir),
+                Commands::Watch(args) => commands::watch::run(args, &config, &config_dir).await,
+                Commands::Daemon(args) => commands::daemon::run(args, &config, &config_dir).await,
+                Commands::Audit(args) => commands::audit::run(args, &config, &config_dir),
+            }
+        }
     }
 }
