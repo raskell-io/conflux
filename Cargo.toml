@@ -77,6 +77,11 @@ sha2 = "0.10"
 # Storage
 rusqlite = { version = "0.33", features = ["bundled"] }
 
+# Async storage backends (feature-gated in conflux-store)
+# Note: sqlx is declared directly in conflux-store to avoid sqlite version conflicts
+aws-sdk-dynamodb = "1.54"
+aws-config = "1.6"
+
 # CLI
 clap = { version = "4.5", features = ["derive"] }
 

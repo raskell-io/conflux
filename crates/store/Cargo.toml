@@ -8,6 +8,11 @@ repository.workspace = true
 rust-version.workspace = true
 description = "Persistent state storage and operation log for Conflux documents"
 
+[features]
+default = []
+postgres = ["dep:sqlx-core", "dep:sqlx-postgres", "dep:async-trait"]
+dynamodb = ["dep:aws-sdk-dynamodb", "dep:aws-config", "dep:async-trait"]
+
 [dependencies]
 conflux-core = { path = "../core" }
 conflux-schema = { path = "../schema" }
@@ -20,5 +25,18 @@ chrono = { workspace = true }
 uuid = { workspace = true }
 parking_lot = { workspace = true }
 
+# Async (optional, for async backends)
+async-trait = { workspace = true, optional = true }
+
+# PostgreSQL (optional)
+# Note: Using sqlx-core + sqlx-postgres directly to avoid sqlite conflicts with rusqlite
+sqlx-core = { version = "0.8", default-features = false, features = ["_rt-tokio", "chrono", "uuid", "json"], optional = true }
+sqlx-postgres = { version = "0.8", default-features = false, features = ["chrono", "uuid", "json"], optional = true }
+
+# DynamoDB (optional)
+aws-sdk-dynamodb = { workspace = true, optional = true }
+aws-config = { workspace = true, optional = true }
+
 [dev-dependencies]
 insta = { workspace = true }
+tokio = { workspace = true, features = ["rt-multi-thread", "macros"] }
