@@ -966,3 +966,63 @@ pub async fn update_webhook(
         last_error: None,
     }))
 }
+
+// ============================================================================
+// Audit
+// ============================================================================
+
+/// Export audit log as JSON Lines (NDJSON).
+///
+/// Returns a streaming response with content-type application/x-ndjson.
+pub async fn export_audit(
+    State(state): State<AppState>,
+    Query(params): Query<crate::dto::AuditExportParams>,
+) -> Result<axum::response::Response, ApiError> {
+    use axum::body::Body;
+    use axum::http::header;
+    use conflux_store::audit::{AuditExportQuery, AuditExporter};
+
+    // Build the query
+    let mut query = AuditExportQuery::new(&state.document_id);
+
+    if let Some(ref since) = params.since {
+        query = query.since_wall_clock(since);
+    }
+    if let Some(ref until) = params.until {
+        query = query.until_wall_clock(until);
+    }
+    if let Some(ref actor) = params.actor {
+        query = query.by_actor(actor);
+    }
+    if let Some(ref entity) = params.entity {
+        query = query.for_entity(entity);
+    }
+    if params.verify {
+        query = query.verify();
+    }
+
+    // Get access to the store
+    let store = state
+        .store
+        .lock()
+        .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
+
+    // Create exporter and export to buffer
+    let exporter = AuditExporter::new(&*store);
+
+    let mut output = Vec::new();
+    let stats = exporter
+        .export(&query, &mut output)
+        .map_err(|e| ApiError::Internal(format!("audit export failed: {e}")))?;
+
+    // Build response with NDJSON content type
+    let response = axum::response::Response::builder()
+        .status(axum::http::StatusCode::OK)
+        .header(header::CONTENT_TYPE, "application/x-ndjson")
+        .header("X-Audit-Operations-Exported", stats.operations_exported.to_string())
+        .header("X-Audit-Signature-Failures", stats.signature_failures.to_string())
+        .body(Body::from(output))
+        .map_err(|e| ApiError::Internal(format!("response build failed: {e}")))?;
+
+    Ok(response)
+}

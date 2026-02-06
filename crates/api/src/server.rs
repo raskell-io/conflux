@@ -75,6 +75,8 @@ pub fn build_router(state: AppState) -> Router {
         .route("/v1/webhooks/{webhook_id}", get(handlers::get_webhook))
         .route("/v1/webhooks/{webhook_id}", put(handlers::update_webhook))
         .route("/v1/webhooks/{webhook_id}", delete(handlers::delete_webhook))
+        // Audit
+        .route("/v1/audit/export", get(handlers::export_audit))
         // State
         .with_state(state)
 }
@@ -429,6 +431,93 @@ mod tests {
                     .body(Body::from(
                         r#"{"type": "set_override", "entity_id": "route.api", "field": "weight", "environment": "staging", "value": 50}"#,
                     ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn audit_export_empty() {
+        let state = test_state();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/audit/export")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(
+            response.headers().get("content-type").unwrap(),
+            "application/x-ndjson"
+        );
+    }
+
+    #[tokio::test]
+    async fn audit_export_with_operations() {
+        let state = test_state();
+        let router = build_router(state);
+
+        // First insert an entity
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ops")
+                    .header("content-type", "application/json")
+                    .header("x-conflux-actor", "test-user")
+                    .header("x-conflux-actor-class", "human")
+                    .body(Body::from(
+                        r#"{"type": "insert_entity", "entity_id": "route.api", "entity_type": "route"}"#,
+                    ))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Export the audit log
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/audit/export")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+
+        assert_eq!(response.status(), StatusCode::OK);
+
+        // Check we got operations exported
+        let export_count = response
+            .headers()
+            .get("x-audit-operations-exported")
+            .and_then(|v| v.to_str().ok())
+            .and_then(|s| s.parse::<usize>().ok())
+            .unwrap_or(0);
+        assert!(export_count >= 1);
+    }
+
+    #[tokio::test]
+    async fn audit_export_with_filters() {
+        let state = test_state();
+        let router = build_router(state);
+
+        let response = router
+            .oneshot(
+                Request::builder()
+                    .uri("/v1/audit/export?actor=test-user&entity=route")
+                    .body(Body::empty())
                     .unwrap(),
             )
             .await

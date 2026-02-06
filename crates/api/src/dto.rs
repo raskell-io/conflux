@@ -503,3 +503,23 @@ pub struct UpdateWebhookRequest {
     #[serde(default)]
     pub format: Option<String>,
 }
+
+// ============================================================================
+// Audit DTOs
+// ============================================================================
+
+/// Query parameters for audit export.
+#[derive(Debug, Clone, Deserialize, Default)]
+pub struct AuditExportParams {
+    /// Export operations since this timestamp (ISO 8601 or HLC string).
+    pub since: Option<String>,
+    /// Export operations until this timestamp (ISO 8601 or HLC string).
+    pub until: Option<String>,
+    /// Filter by actor ID.
+    pub actor: Option<String>,
+    /// Filter by entity ID prefix.
+    pub entity: Option<String>,
+    /// Verify signatures during export.
+    #[serde(default)]
+    pub verify: bool,
+}
