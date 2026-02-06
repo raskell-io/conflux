@@ -30,6 +30,7 @@ pub mod field_state;
 pub mod identity;
 pub mod operation;
 pub mod schema_info;
+pub mod signing;
 
 // Re-exports for convenient access
 pub use clock::{Clock, HlcTimestamp};
@@ -41,3 +42,7 @@ pub use field_state::FieldState;
 pub use identity::{ActorClass, ActorId, EntityId};
 pub use operation::{ApplyResult, Operation, OperationKind};
 pub use schema_info::{FieldSchema, SchemaInfo, SimpleSchemaInfo};
+pub use signing::{
+    OperationSignature, PublicKeyRegistry, SignatureScheme, SigningError, SigningKey,
+    VerificationKey,
+};

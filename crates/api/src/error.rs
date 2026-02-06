@@ -17,6 +17,10 @@ pub enum ApiError {
     #[error("invalid actor class: {0}")]
     InvalidActorClass(String),
 
+    /// Access denied (authorization failed).
+    #[error("forbidden: {0}")]
+    Forbidden(String),
+
     /// Entity not found.
     #[error("entity not found: {0}")]
     EntityNotFound(String),
@@ -46,6 +50,12 @@ pub enum ApiError {
     Internal(String),
 }
 
+impl From<conflux_rbac::DenialReason> for ApiError {
+    fn from(reason: conflux_rbac::DenialReason) -> Self {
+        ApiError::Forbidden(reason.message)
+    }
+}
+
 /// Error response body.
 #[derive(Debug, Serialize)]
 struct ErrorResponse {
@@ -58,6 +68,7 @@ impl IntoResponse for ApiError {
         let (status, code) = match &self {
             ApiError::MissingActor(_) => (StatusCode::UNAUTHORIZED, "missing_actor"),
             ApiError::InvalidActorClass(_) => (StatusCode::BAD_REQUEST, "invalid_actor_class"),
+            ApiError::Forbidden(_) => (StatusCode::FORBIDDEN, "forbidden"),
             ApiError::EntityNotFound(_) => (StatusCode::NOT_FOUND, "entity_not_found"),
             ApiError::Validation(_) => (StatusCode::BAD_REQUEST, "validation_error"),
             ApiError::Store(e) => match e {

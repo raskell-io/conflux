@@ -36,6 +36,7 @@
 //! store.append_operation("doc", &op).await?;
 //! ```
 
+pub mod audit;
 pub mod error;
 pub mod memory;
 pub mod models;

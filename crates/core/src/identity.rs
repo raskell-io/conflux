@@ -36,7 +36,7 @@ impl From<String> for EntityId {
 }
 
 /// Classification of an actor performing operations.
-#[derive(Debug, Clone, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum ActorClass {
     Human,
     Pipeline,

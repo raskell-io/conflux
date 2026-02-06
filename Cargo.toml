@@ -6,6 +6,7 @@ members = [
     "crates/git",
     "crates/api",
     "crates/cli",
+    "crates/rbac",
     "crates/replication",
     "crates/tests",
 ]
@@ -73,6 +74,12 @@ uhlc = { version = "0.9", features = ["serde"] }
 # Hashing and identity
 uuid = { version = "1.20", features = ["v4", "serde"] }
 sha2 = "0.10"
+hex = "0.4"
+
+# Cryptographic signing
+ed25519-dalek = { version = "2.1", features = ["serde", "pem", "rand_core"] }
+rand = "0.8"
+base64 = "0.22"
 
 # Storage
 rusqlite = { version = "0.33", features = ["bundled"] }

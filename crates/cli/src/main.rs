@@ -66,6 +66,18 @@ enum Commands {
 
     /// Run the Conflux daemon (API server).
     Daemon(commands::daemon::DaemonArgs),
+
+    /// Authentication management (API keys).
+    Auth(commands::auth::AuthArgs),
+
+    /// Cryptographic key management.
+    Keys(commands::keys::KeysArgs),
+
+    /// Role-based access control management.
+    Rbac(commands::rbac::RbacArgs),
+
+    /// Audit log export and verification.
+    Audit(commands::audit::AuditArgs),
 }
 
 #[tokio::main]
@@ -107,5 +119,9 @@ async fn main() -> Result<()> {
         Commands::Resolve(args) => commands::resolve::run(args, &config, &config_dir),
         Commands::Watch(args) => commands::watch::run(args, &config, &config_dir).await,
         Commands::Daemon(args) => commands::daemon::run(args, &config, &config_dir).await,
+        Commands::Auth(args) => commands::auth::run(args),
+        Commands::Keys(args) => commands::keys::run(args),
+        Commands::Rbac(args) => commands::rbac::run(args),
+        Commands::Audit(args) => commands::audit::run(args, &config, &config_dir),
     }
 }

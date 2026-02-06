@@ -94,6 +94,10 @@ pub enum ValidationError {
     /// A reference points to a nonexistent entity.
     #[error("broken reference: field '{field}' references nonexistent entity '{target}'")]
     BrokenReference { field: String, target: String },
+
+    /// Custom validation error (e.g., from signing).
+    #[error("{0}")]
+    Custom(String),
 }
 
 /// Errors from the HLC clock.

@@ -1,20 +1,34 @@
-//! Actor authentication from request headers.
+//! Actor extractors for Axum handlers.
 
+use super::api_key::{AuthMethod, AuthenticatedActor};
 use crate::error::ApiError;
 use axum::extract::FromRequestParts;
 use axum::http::request::Parts;
 use axum::http::HeaderMap;
 use conflux_core::{ActorClass, ActorId};
 
-/// Header names for actor identity.
+/// Header names for legacy actor identity.
 pub const ACTOR_HEADER: &str = "x-conflux-actor";
 pub const ACTOR_CLASS_HEADER: &str = "x-conflux-actor-class";
 
-/// Extractor for actor identity from request headers.
+/// Extractor for authenticated actor identity.
 ///
-/// Requires `X-Conflux-Actor` and `X-Conflux-Actor-Class` headers.
+/// This extractor first checks for an `AuthenticatedActor` in request extensions
+/// (set by the auth middleware), then falls back to legacy header extraction.
 #[derive(Debug, Clone)]
 pub struct Actor(pub ActorId);
+
+impl Actor {
+    /// Returns the underlying actor ID.
+    pub fn into_inner(self) -> ActorId {
+        self.0
+    }
+
+    /// Returns a reference to the actor ID.
+    pub fn as_actor_id(&self) -> &ActorId {
+        &self.0
+    }
+}
 
 impl<S> FromRequestParts<S> for Actor
 where
@@ -23,7 +37,68 @@ where
     type Rejection = ApiError;
 
     async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // First, check for authenticated actor from middleware
+        if let Some(authenticated) = parts.extensions.get::<AuthenticatedActor>() {
+            return Ok(Actor(authenticated.actor.clone()));
+        }
+
+        // Fall back to legacy header extraction
         extract_actor(&parts.headers)
+    }
+}
+
+/// Extractor that provides both the actor and authentication metadata.
+#[derive(Debug, Clone)]
+pub struct AuthorizedActor {
+    /// The actor identity.
+    pub actor: ActorId,
+    /// How the actor was authenticated.
+    pub method: AuthMethod,
+}
+
+impl AuthorizedActor {
+    /// Returns the actor ID.
+    pub fn actor_id(&self) -> &ActorId {
+        &self.actor
+    }
+
+    /// Returns true if this was authenticated via API key.
+    pub fn is_api_key_auth(&self) -> bool {
+        matches!(self.method, AuthMethod::ApiKey { .. })
+    }
+
+    /// Returns true if this was authenticated via mTLS.
+    pub fn is_mtls_auth(&self) -> bool {
+        matches!(self.method, AuthMethod::Mtls { .. })
+    }
+
+    /// Returns true if this was authenticated via legacy headers.
+    pub fn is_legacy_auth(&self) -> bool {
+        matches!(self.method, AuthMethod::LegacyHeaders)
+    }
+}
+
+impl<S> FromRequestParts<S> for AuthorizedActor
+where
+    S: Send + Sync,
+{
+    type Rejection = ApiError;
+
+    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
+        // First, check for authenticated actor from middleware
+        if let Some(authenticated) = parts.extensions.get::<AuthenticatedActor>() {
+            return Ok(AuthorizedActor {
+                actor: authenticated.actor.clone(),
+                method: authenticated.method.clone(),
+            });
+        }
+
+        // Fall back to legacy header extraction
+        let actor = extract_actor(&parts.headers)?;
+        Ok(AuthorizedActor {
+            actor: actor.0,
+            method: AuthMethod::LegacyHeaders,
+        })
     }
 }
 
@@ -47,7 +122,7 @@ pub fn extract_actor(headers: &HeaderMap) -> Result<Actor, ApiError> {
 }
 
 /// Parses an actor class string.
-fn parse_actor_class(s: &str) -> Result<ActorClass, ApiError> {
+pub fn parse_actor_class(s: &str) -> Result<ActorClass, ApiError> {
     match s.to_lowercase().as_str() {
         "human" => Ok(ActorClass::Human),
         "pipeline" => Ok(ActorClass::Pipeline),

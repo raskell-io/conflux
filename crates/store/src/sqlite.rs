@@ -100,8 +100,51 @@ impl SqliteStore {
                 data TEXT NOT NULL,
                 updated_at TEXT NOT NULL DEFAULT (datetime('now'))
             );
+
+            CREATE TABLE IF NOT EXISTS public_keys (
+                key_id TEXT PRIMARY KEY,
+                actor_id TEXT NOT NULL,
+                public_key BLOB NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                expires_at TEXT,
+                revoked INTEGER DEFAULT 0
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_public_keys_actor
+                ON public_keys (actor_id);
             ",
         )?;
+
+        // Run migrations for signature columns (added in v1.0)
+        self.run_migrations()?;
+
+        Ok(())
+    }
+
+    /// Runs schema migrations for backward compatibility.
+    fn run_migrations(&self) -> Result<(), StoreError> {
+        let conn = self.conn.lock();
+
+        // Check if signature column exists
+        let has_signature: bool = conn
+            .query_row(
+                "SELECT COUNT(*) > 0 FROM pragma_table_info('operations') WHERE name = 'signature'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+
+        if !has_signature {
+            // Add signature columns to operations table
+            conn.execute_batch(
+                "
+                ALTER TABLE operations ADD COLUMN signature TEXT;
+                ALTER TABLE operations ADD COLUMN signature_key_id TEXT;
+                ALTER TABLE operations ADD COLUMN signature_verified INTEGER DEFAULT 0;
+                ",
+            )?;
+        }
+
         Ok(())
     }
 

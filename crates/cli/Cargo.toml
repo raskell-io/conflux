@@ -19,6 +19,7 @@ conflux-store = { path = "../store" }
 conflux-git = { path = "../git" }
 conflux-api = { path = "../api" }
 conflux-replication = { path = "../replication" }
+conflux-rbac = { path = "../rbac" }
 serde = { workspace = true }
 parking_lot = { workspace = true }
 tonic = { workspace = true }
@@ -37,6 +38,7 @@ glob = "0.3"
 kdl = { workspace = true }
 jrsonnet-evaluator = "0.5.0-pre97"
 jrsonnet-stdlib = "0.5.0-pre97"
+base64 = { workspace = true }
 
 [dev-dependencies]
 tempfile = { workspace = true }

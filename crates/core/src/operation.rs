@@ -3,6 +3,7 @@
 use crate::clock::HlcTimestamp;
 use crate::field::FieldValue;
 use crate::identity::{ActorId, EntityId};
+use crate::signing::OperationSignature;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
@@ -19,6 +20,9 @@ pub struct Operation {
     pub intent: Option<String>,
     /// The kind of mutation.
     pub kind: OperationKind,
+    /// Optional cryptographic signature for non-repudiation.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub signature: Option<OperationSignature>,
 }
 
 /// The specific mutation an operation performs.
@@ -83,6 +87,7 @@ impl Operation {
                 field: field.into(),
                 value,
             },
+            signature: None,
         }
     }
 
@@ -106,6 +111,7 @@ impl Operation {
                 parent_id,
                 position,
             },
+            signature: None,
         }
     }
 
@@ -123,6 +129,7 @@ impl Operation {
             kind: OperationKind::RemoveEntity {
                 entity_id: entity_id.into(),
             },
+            signature: None,
         }
     }
 
@@ -144,6 +151,7 @@ impl Operation {
                 new_parent_id: new_parent_id.into(),
                 new_position: new_position.into(),
             },
+            signature: None,
         }
     }
 
@@ -167,6 +175,7 @@ impl Operation {
                 environment: environment.into(),
                 value,
             },
+            signature: None,
         }
     }
 
@@ -190,6 +199,7 @@ impl Operation {
                 environment,
                 chosen_value,
             },
+            signature: None,
         }
     }
 
@@ -197,6 +207,17 @@ impl Operation {
     pub fn with_intent(mut self, intent: impl Into<String>) -> Self {
         self.intent = Some(intent.into());
         self
+    }
+
+    /// Attaches a cryptographic signature to this operation.
+    pub fn with_signature(mut self, signature: OperationSignature) -> Self {
+        self.signature = Some(signature);
+        self
+    }
+
+    /// Returns true if this operation has a signature.
+    pub fn is_signed(&self) -> bool {
+        self.signature.is_some()
     }
 }
 
