@@ -110,6 +110,10 @@ conflux daemon --port 8080
 | **Format Agnostic** | Import YAML, JSON, TOML, KDL, Jsonnet, CUE. Export to YAML, JSON, TOML, KDL, XML, HCL. Extensible via serializer plugins |
 | **Operation Log** | Append-only audit trail of every mutation with actor identity and intent |
 | **Post-Merge Validation** | Schema constraints enforced after every merge — convergence + correctness |
+| **API Key & mTLS Auth** | Secure API access with hashed API keys or client certificates |
+| **Role-Based Access Control** | Granular permissions per entity, field, and environment with role inheritance |
+| **Signed Operations** | Ed25519 digital signatures on operations for cryptographic auditability |
+| **Audit Export** | Export operation history as JSON Lines with signature verification |
 
 ### Schema Example
 
@@ -185,7 +189,14 @@ Operations: 3
 | `status` | Show document statistics |
 | `milestone` | Create, list, or show milestones |
 | `promote` | Promote configuration between environments |
+| `conflicts` | List unresolved conflicts |
+| `resolve` | Resolve a conflict by choosing a value |
+| `watch` | Watch for state changes in real-time |
 | `daemon` | Run the API server |
+| `auth` | Authentication management (hash API keys) |
+| `keys` | Cryptographic key management (generate, register, list, revoke) |
+| `rbac` | Role-based access control (list-roles, check, validate) |
+| `audit` | Audit log export and signature verification |
 
 See [`crates/cli/docs/README.md`](crates/cli/docs/README.md) for full CLI documentation.
 
@@ -194,26 +205,95 @@ See [`crates/cli/docs/README.md`](crates/cli/docs/README.md) for full CLI docume
 The daemon exposes a REST API for programmatic access:
 
 ```bash
-# Get all entities
-curl http://localhost:8080/entities
+# Get document state (with API key auth)
+curl -H "X-API-Key: your-api-key" \
+  http://localhost:9400/v1/state
 
-# Get specific entity
-curl http://localhost:8080/entities/service.api
-
-# Set a field
-curl -X PUT http://localhost:8080/entities/service.api/fields/replicas \
+# Submit an operation
+curl -X POST http://localhost:9400/v1/ops \
   -H "Content-Type: application/json" \
-  -H "X-Actor: deploy-pipeline" \
-  -H "X-Actor-Class: pipeline" \
-  -d '{"value": 5, "intent": "Scale for traffic"}'
+  -H "X-API-Key: your-api-key" \
+  -d '{
+    "type": "set_field",
+    "entity_id": "service.api",
+    "field": "replicas",
+    "value": 5,
+    "intent": "Scale for traffic"
+  }'
 
 # Create a milestone
-curl -X POST http://localhost:8080/milestones \
+curl -X POST http://localhost:9400/v1/milestones \
   -H "Content-Type: application/json" \
+  -H "X-API-Key: your-api-key" \
   -d '{"message": "Deploy v2.0", "environments": ["production"]}'
+
+# Export audit log
+curl -H "X-API-Key: your-api-key" \
+  "http://localhost:9400/v1/audit/export?since=2024-01-01"
 ```
 
 See [`crates/api/docs/README.md`](crates/api/docs/README.md) for full API documentation.
+
+### Security
+
+Conflux provides enterprise-grade security features:
+
+**API Key Authentication**
+```bash
+# Generate an API key hash
+conflux auth hash-key "your-secret-key"
+# Output: sha256:2cf24dba5fb0a30e...
+
+# Add to .conflux/api-keys.toml
+# [[keys]]
+# key_hash = "sha256:2cf24dba5fb0a30e..."
+# actor_id = "ci-pipeline"
+# actor_class = "pipeline"
+```
+
+**Ed25519 Signed Operations**
+```bash
+# Generate a signing key pair
+conflux keys generate --actor alice --output ~/.conflux/keys/alice.pem
+
+# Register the public key
+conflux keys register --key-id alice@2024 --actor alice \
+  --public-key "M4kJ839WYm//Jarj9Xticyn6P7z1NQb+UAy5X6Y3dv8="
+```
+
+**Role-Based Access Control**
+```toml
+# rbac.toml
+[role.developer]
+permissions = [
+  { actions = ["read", "write"], resource = "*@development" },
+]
+
+[role.operator]
+inherits = ["developer"]
+permissions = [
+  { actions = ["write", "override"], resource = "*@staging" },
+  { actions = ["promote"], resource = "*@production" },
+]
+
+[[assignment]]
+actor_pattern = "ci-*"
+roles = ["developer"]
+```
+
+```bash
+# Check permissions
+conflux rbac check --actor alice --action write --resource "service/api@staging"
+```
+
+**Audit Export**
+```bash
+# Export operation history as JSON Lines
+conflux audit export --since 2024-01-01 --output audit.jsonl
+
+# Verify signatures in export
+conflux audit verify audit.jsonl --key-registry .conflux/keys.json
+```
 
 ## Why Not Just Git?
 
@@ -235,11 +315,12 @@ Each crate has its own `docs/` directory with detailed documentation.
 
 | Crate | Description |
 |-------|-------------|
-| [`conflux-core`](crates/core/) | CRDT document model, typed operations, per-field merge semantics |
+| [`conflux-core`](crates/core/) | CRDT document model, typed operations, per-field merge semantics, Ed25519 signing |
 | [`conflux-schema`](crates/schema/) | Schema definition language (TOML) for config structure and merge rules |
-| [`conflux-store`](crates/store/) | Pluggable storage backends (SQLite default, in-memory for testing) |
+| [`conflux-store`](crates/store/) | Pluggable storage backends (SQLite, PostgreSQL, DynamoDB) and audit export |
 | [`conflux-git`](crates/git/) | Git milestone projection, config format serialization, and serializer plugin API |
-| [`conflux-api`](crates/api/) | HTTP and gRPC API server for machine actors |
+| [`conflux-rbac`](crates/rbac/) | Role-based access control with inheritance and pattern matching |
+| [`conflux-api`](crates/api/) | HTTP and gRPC API server with authentication and authorization |
 | [`conflux`](crates/cli/) | CLI and daemon entry point |
 
 </details>
