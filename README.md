@@ -75,20 +75,20 @@ conflux daemon --port 8080
 
 ```
                     ┌─────────────────────────────────┐
-  Actors            │       Conflux Engine             │        Consumers
-                    │                                  │
-  Human (CLI/UI) ──>│  ┌─────────────────────────────┐ │──> Git repo (milestones)
-  CI pipeline ─────>│  │   CRDT Document Store        │ │──> Webhook notifications
-  K8s operator ────>│  │                               │ │──> Pull API (reconcilers)
-  Autoscaler ──────>│  │   Per-field merge logic       │ │──> gRPC stream (watchers)
-  Policy engine ───>│  │   Causal history (HLC)        │ │
-                    │  │   Schema + validation         │ │
-                    │  └─────────────────────────────┘ │
-                    │                                  │
-                    │  ┌────────────┐ ┌──────────────┐ │
-                    │  │ Env/Stage  │ │  Milestone   │ │
-                    │  │ Overlays   │ │  Projector   │ │
-                    │  └────────────┘ └──────────────┘ │
+  Actors            │       Conflux Engine            │        Consumers
+                    │                                 │
+  Human (CLI/UI) ──>│  ┌────────────────────────────┐ │──> Git repo (milestones)
+  CI pipeline ─────>│  │   CRDT Document Store      │ │──> Webhook notifications
+  K8s operator ────>│  │                            │ │──> Pull API (reconcilers)
+  Autoscaler ──────>│  │   Per-field merge logic    │ │──> gRPC stream (watchers)
+  Policy engine ───>│  │   Causal history (HLC)     │ │
+                    │  │   Schema + validation      │ │
+                    │  └────────────────────────────┘ │
+                    │                                 │
+                    │  ┌────────────┐ ┌─────────────┐ │
+                    │  │ Env/Stage  │ │  Milestone  │ │
+                    │  │ Overlays   │ │  Projector  │ │
+                    │  └────────────┘ └─────────────┘ │
                     └─────────────────────────────────┘
 ```
 
