@@ -1,7 +1,14 @@
 <div align="center">
 
+<p align="center">
+  <img src=".github/brand/conflux-icon.svg" alt="" width="96" height="96">
+</p>
+
 <h1 align="center">
-  Conflux
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/brand/conflux-wordmark-dark.svg">
+    <img alt="Conflux" src=".github/brand/conflux-wordmark-light.svg" height="56">
+  </picture>
 </h1>
 
 <p align="center">
