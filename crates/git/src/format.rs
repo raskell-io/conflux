@@ -144,7 +144,10 @@ pub fn serialize_with_registry<T: Serialize>(
 /// Serializes a value using the global registry by format ID.
 ///
 /// Convenience wrapper around [`serialize_with_registry`] using the global registry.
-pub fn serialize_by_format_id<T: Serialize>(value: &T, format_id: &str) -> Result<String, GitError> {
+pub fn serialize_by_format_id<T: Serialize>(
+    value: &T,
+    format_id: &str,
+) -> Result<String, GitError> {
     serialize_with_registry(value, format_id, global_registry())
 }
 
@@ -221,7 +224,12 @@ fn json_to_xml(value: &serde_json::Value, root_name: &str) -> String {
     output
 }
 
-pub(crate) fn json_to_xml_impl(value: &serde_json::Value, output: &mut String, name: &str, indent: usize) {
+pub(crate) fn json_to_xml_impl(
+    value: &serde_json::Value,
+    output: &mut String,
+    name: &str,
+    indent: usize,
+) {
     let prefix = "  ".repeat(indent);
     match value {
         serde_json::Value::Object(map) => {

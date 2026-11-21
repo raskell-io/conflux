@@ -66,9 +66,8 @@ pub fn run(args: ResolveArgs, config: &Config, config_dir: &Path) -> Result<()> 
     let mut document = Document::new();
 
     // Load document state
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -77,9 +76,9 @@ pub fn run(args: ResolveArgs, config: &Config, config_dir: &Path) -> Result<()> 
     // Find the conflict
     let entity_id = conflux_core::EntityId::new(&args.entity_id);
     let conflicts = document.list_conflicts();
-    let conflict = conflicts.iter().find(|c| {
-        c.entity_id == entity_id && c.field == args.field && c.environment == args.env
-    });
+    let conflict = conflicts
+        .iter()
+        .find(|c| c.entity_id == entity_id && c.field == args.field && c.environment == args.env);
 
     if args.show {
         match conflict {
@@ -99,7 +98,10 @@ pub fn run(args: ResolveArgs, config: &Config, config_dir: &Path) -> Result<()> 
                     "no conflict found on {}.{}{}",
                     args.entity_id,
                     args.field,
-                    args.env.as_ref().map(|e| format!("[{}]", e)).unwrap_or_default()
+                    args.env
+                        .as_ref()
+                        .map(|e| format!("[{}]", e))
+                        .unwrap_or_default()
                 );
             }
         }

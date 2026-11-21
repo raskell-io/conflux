@@ -101,7 +101,7 @@ These properties mean that regardless of the order in which operations arrive or
 
 ### Post-merge validation
 
-CRDTs guarantee convergence but not correctness. After every merge, Conflux validates the resolved state against the schema: cross-entity references resolve, numeric values fall within declared ranges, and required fields are present. This catches semantic errors that a purely mechanical merge would miss.
+CRDTs guarantee convergence but not correctness. After every merge, Conflux validates the resolved state against the schema: cross-entity references resolve, numeric values fall within declared ranges, and required fields are present. This catches semantic errors that a purely mechanical merge would miss. Violations are reported, not rejected: the write's response lists them (`violations` over HTTP and gRPC) and the server logs them, because refusing a state that other replicas have already merged would make them diverge. Fixing a violation is a new operation, like any other write.
 
 ### Environments as a data dimension
 

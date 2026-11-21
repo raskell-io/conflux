@@ -125,7 +125,11 @@ fn run_generate(args: GenerateArgs) -> Result<()> {
         println!("Public key (base64):");
         println!("{}", verification_key.to_base64());
         println!();
-        println!("Suggested key ID: {}@{}", args.actor, chrono::Utc::now().format("%Y-%m"));
+        println!(
+            "Suggested key ID: {}@{}",
+            args.actor,
+            chrono::Utc::now().format("%Y-%m")
+        );
     }
 
     Ok(())
@@ -153,7 +157,10 @@ fn run_register(args: RegisterArgs) -> Result<()> {
     // Save the registry
     registry.save(&args.registry)?;
 
-    println!("Registered key '{}' for actor '{}'", args.key_id, args.actor);
+    println!(
+        "Registered key '{}' for actor '{}'",
+        args.key_id, args.actor
+    );
 
     Ok(())
 }

@@ -64,17 +64,9 @@ impl DynamoStore {
     /// Returns `StoreError::DynamoDB` if table creation fails.
     pub async fn create_table_if_not_exists(&self) -> Result<(), StoreError> {
         // Check if table exists
-        let tables = self
-            .client
-            .list_tables()
-            .send()
-            .await?;
+        let tables = self.client.list_tables().send().await?;
 
-        if tables
-            .table_names()
-            .iter()
-            .any(|n| n == &self.table_name)
-        {
+        if tables.table_names().iter().any(|n| n == &self.table_name) {
             return Ok(());
         }
 
@@ -325,7 +317,8 @@ impl AsyncStore for DynamoStore {
                 // Pad with high UUID value to include all operations at this timestamp
                 let sk_end = format!(
                     "{}{}#ffffffff-ffff-ffff-ffff-ffffffffffff",
-                    Keys::OP_PREFIX, until
+                    Keys::OP_PREFIX,
+                    until
                 );
                 expr_values.push((":sk_end".to_string(), AttributeValue::S(sk_end)));
             }
@@ -335,7 +328,10 @@ impl AsyncStore for DynamoStore {
         // Add filter conditions
         if let Some(ref entity_id) = query.entity_id {
             filter_conditions.push("entity_id = :entity_id".to_string());
-            expr_values.push((":entity_id".to_string(), AttributeValue::S(entity_id.clone())));
+            expr_values.push((
+                ":entity_id".to_string(),
+                AttributeValue::S(entity_id.clone()),
+            ));
         }
 
         if let Some(ref actor_id) = query.actor_id {
@@ -403,10 +399,7 @@ impl AsyncStore for DynamoStore {
                 ":sk_prefix",
                 AttributeValue::S(Keys::OP_PREFIX.to_string()),
             )
-            .expression_attribute_values(
-                ":item_type",
-                AttributeValue::S("operation".to_string()),
-            )
+            .expression_attribute_values(":item_type", AttributeValue::S("operation".to_string()))
             .select(aws_sdk_dynamodb::types::Select::Count)
             .send()
             .await?;
@@ -515,10 +508,7 @@ impl AsyncStore for DynamoStore {
                 ":sk_prefix",
                 AttributeValue::S(Keys::SNAP_PREFIX.to_string()),
             )
-            .expression_attribute_values(
-                ":item_type",
-                AttributeValue::S("snapshot".to_string()),
-            )
+            .expression_attribute_values(":item_type", AttributeValue::S("snapshot".to_string()))
             .scan_index_forward(false) // Descending order (latest first)
             .limit(1)
             .send()
@@ -550,9 +540,7 @@ impl AsyncStore for DynamoStore {
                     .query()
                     .table_name(&self.table_name)
                     .key_condition_expression("pk = :pk AND sk > :sk_start")
-                    .filter_expression(
-                        "item_type = :item_type AND begins_with(sk, :op_prefix)",
-                    )
+                    .filter_expression("item_type = :item_type AND begins_with(sk, :op_prefix)")
                     .expression_attribute_values(":pk", AttributeValue::S(pk))
                     .expression_attribute_values(":sk_start", AttributeValue::S(sk_start))
                     .expression_attribute_values(
@@ -639,10 +627,7 @@ impl AsyncStore for DynamoStore {
                 ":sk_prefix",
                 AttributeValue::S(Keys::MILE_PREFIX.to_string()),
             )
-            .expression_attribute_values(
-                ":item_type",
-                AttributeValue::S("milestone".to_string()),
-            )
+            .expression_attribute_values(":item_type", AttributeValue::S("milestone".to_string()))
             .scan_index_forward(false) // Descending order (latest first)
             .limit(1)
             .send()
@@ -671,10 +656,7 @@ impl AsyncStore for DynamoStore {
                 ":sk_prefix",
                 AttributeValue::S(Keys::MILE_PREFIX.to_string()),
             )
-            .expression_attribute_values(
-                ":item_type",
-                AttributeValue::S("milestone".to_string()),
-            )
+            .expression_attribute_values(":item_type", AttributeValue::S("milestone".to_string()))
             .scan_index_forward(false) // Descending order (newest first)
             .send()
             .await?;
@@ -701,9 +683,7 @@ impl AsyncStore for DynamoStore {
                     .query()
                     .table_name(&self.table_name)
                     .key_condition_expression("pk = :pk AND sk > :sk_start")
-                    .filter_expression(
-                        "item_type = :item_type AND begins_with(sk, :op_prefix)",
-                    )
+                    .filter_expression("item_type = :item_type AND begins_with(sk, :op_prefix)")
                     .expression_attribute_values(":pk", AttributeValue::S(pk))
                     .expression_attribute_values(":sk_start", AttributeValue::S(sk_start))
                     .expression_attribute_values(
@@ -745,10 +725,7 @@ impl AsyncStore for DynamoStore {
             .item("document_id", AttributeValue::S(document_id.to_string()))
             .item("data", AttributeValue::S(version_vector_json.to_string()))
             .item("updated_at", AttributeValue::S(updated_at))
-            .item(
-                "item_type",
-                AttributeValue::S("version_vector".to_string()),
-            )
+            .item("item_type", AttributeValue::S("version_vector".to_string()))
             .send()
             .await?;
 
@@ -814,9 +791,7 @@ fn get_string_attr(
     item.get(key)
         .and_then(|v| v.as_s().ok())
         .map(|s| s.to_string())
-        .ok_or_else(|| {
-            StoreError::Integrity(format!("missing or invalid attribute: {key}"))
-        })
+        .ok_or_else(|| StoreError::Integrity(format!("missing or invalid attribute: {key}")))
 }
 
 /// Extracts an optional string attribute from a DynamoDB item.

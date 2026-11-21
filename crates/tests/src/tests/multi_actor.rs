@@ -3,7 +3,9 @@
 //! Tests that concurrent operations from multiple actors merge correctly
 //! according to the schema-defined merge strategies.
 
-use conflux_core::{ActorClass, ActorId, ApplyResult, Clock, Document, EntityId, FieldValue, Operation};
+use conflux_core::{
+    ActorClass, ActorId, ApplyResult, Clock, Document, EntityId, FieldValue, Operation,
+};
 use conflux_schema::Schema;
 use std::str::FromStr;
 
@@ -71,7 +73,9 @@ fn concurrent_max_merge_takes_highest() {
     doc.apply(&autoscaler_op, &schema_info, &clock).unwrap();
 
     // Max wins: should be 5
-    let replicas = doc.get_field(&EntityId::new("service.api"), "replicas").unwrap();
+    let replicas = doc
+        .get_field(&EntityId::new("service.api"), "replicas")
+        .unwrap();
     assert_eq!(replicas, FieldValue::Int(5));
 }
 
@@ -118,7 +122,9 @@ fn concurrent_min_merge_takes_lowest() {
     doc.apply(&bob_op, &schema_info, &clock).unwrap();
 
     // Min wins: should be 2
-    let min_replicas = doc.get_field(&EntityId::new("service.api"), "min_replicas").unwrap();
+    let min_replicas = doc
+        .get_field(&EntityId::new("service.api"), "min_replicas")
+        .unwrap();
     assert_eq!(min_replicas, FieldValue::Int(2));
 }
 
@@ -165,7 +171,9 @@ fn concurrent_lww_merge_takes_later_timestamp() {
     doc.apply(&pipeline_op, &schema_info, &clock).unwrap();
 
     // LWW: later timestamp (pipeline) wins
-    let image = doc.get_field(&EntityId::new("service.api"), "image").unwrap();
+    let image = doc
+        .get_field(&EntityId::new("service.api"), "image")
+        .unwrap();
     assert_eq!(image, FieldValue::String("myapp:v2.0".into()));
 }
 
@@ -261,8 +269,12 @@ fn different_fields_never_conflict() {
     assert!(matches!(result2, ApplyResult::Applied));
 
     // Both values should be set
-    let replicas = doc.get_field(&EntityId::new("service.api"), "replicas").unwrap();
-    let image = doc.get_field(&EntityId::new("service.api"), "image").unwrap();
+    let replicas = doc
+        .get_field(&EntityId::new("service.api"), "replicas")
+        .unwrap();
+    let image = doc
+        .get_field(&EntityId::new("service.api"), "image")
+        .unwrap();
     assert_eq!(replicas, FieldValue::Int(5));
     assert_eq!(image, FieldValue::String("myapp:v2.0".into()));
 }
@@ -322,8 +334,12 @@ fn different_entities_never_conflict() {
     assert!(matches!(result2, ApplyResult::Applied));
 
     // Both entities should have their values
-    let api_replicas = doc.get_field(&EntityId::new("service.api"), "replicas").unwrap();
-    let worker_replicas = doc.get_field(&EntityId::new("service.worker"), "replicas").unwrap();
+    let api_replicas = doc
+        .get_field(&EntityId::new("service.api"), "replicas")
+        .unwrap();
+    let worker_replicas = doc
+        .get_field(&EntityId::new("service.worker"), "replicas")
+        .unwrap();
     assert_eq!(api_replicas, FieldValue::Int(5));
     assert_eq!(worker_replicas, FieldValue::Int(10));
 }

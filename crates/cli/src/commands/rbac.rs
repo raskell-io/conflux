@@ -3,7 +3,7 @@
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use conflux_core::{ActorClass, ActorId};
-use conflux_rbac::{Action, AuthzContext, Authorizer, RbacAuthorizer, RbacConfig, Resource};
+use conflux_rbac::{Action, Authorizer, AuthzContext, RbacAuthorizer, RbacConfig, Resource};
 use std::path::PathBuf;
 
 /// RBAC management commands.
@@ -140,7 +140,10 @@ fn run_check(args: CheckArgs) -> Result<()> {
     match result {
         conflux_rbac::AuthzResult::Allowed => {
             println!("✓ ALLOWED");
-            println!("  Actor '{}' can {} on {}", args.actor, args.action, args.resource);
+            println!(
+                "  Actor '{}' can {} on {}",
+                args.actor, args.action, args.resource
+            );
         }
         conflux_rbac::AuthzResult::Denied(reason) => {
             println!("✗ DENIED");

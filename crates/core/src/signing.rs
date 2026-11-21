@@ -163,7 +163,9 @@ impl SigningKey {
         }
 
         if key_data.is_empty() {
-            return Err(SigningError::KeyParse("no private key found in PEM".to_string()));
+            return Err(SigningError::KeyParse(
+                "no private key found in PEM".to_string(),
+            ));
         }
 
         let bytes = BASE64
@@ -173,15 +175,15 @@ impl SigningKey {
         // Ed25519 private keys are 32 bytes, but PKCS#8 wrapping adds overhead
         // For simplicity, we support raw 32-byte keys or full PKCS#8
         let key_bytes: [u8; 32] = if bytes.len() == 32 {
-            bytes.try_into().map_err(|_| {
-                SigningError::KeyParse("invalid key length".to_string())
-            })?
+            bytes
+                .try_into()
+                .map_err(|_| SigningError::KeyParse("invalid key length".to_string()))?
         } else if bytes.len() > 32 {
             // PKCS#8 format - key is in the last 32 bytes
             let start = bytes.len() - 32;
-            bytes[start..].try_into().map_err(|_| {
-                SigningError::KeyParse("invalid key length".to_string())
-            })?
+            bytes[start..]
+                .try_into()
+                .map_err(|_| SigningError::KeyParse("invalid key length".to_string()))?
         } else {
             return Err(SigningError::KeyParse(format!(
                 "invalid key length: {} bytes",
@@ -218,7 +220,10 @@ impl SigningKey {
     ) -> Result<OperationSignature, SigningError> {
         let payload = canonical_operation_bytes(operation)?;
         let signature = self.inner.sign(&payload);
-        Ok(OperationSignature::new(signature.to_bytes().as_slice(), key_id))
+        Ok(OperationSignature::new(
+            signature.to_bytes().as_slice(),
+            key_id,
+        ))
     }
 }
 
@@ -235,13 +240,12 @@ impl VerificationKey {
             .decode(encoded)
             .map_err(SigningError::InvalidBase64)?;
 
-        let key_bytes: [u8; 32] = bytes.try_into().map_err(|_| {
-            SigningError::KeyParse("verification key must be 32 bytes".to_string())
-        })?;
+        let key_bytes: [u8; 32] = bytes
+            .try_into()
+            .map_err(|_| SigningError::KeyParse("verification key must be 32 bytes".to_string()))?;
 
-        let inner = DalekVerifyingKey::from_bytes(&key_bytes).map_err(|e| {
-            SigningError::KeyParse(format!("invalid verification key: {}", e))
-        })?;
+        let inner = DalekVerifyingKey::from_bytes(&key_bytes)
+            .map_err(|e| SigningError::KeyParse(format!("invalid verification key: {}", e)))?;
 
         Ok(Self { inner })
     }
@@ -498,7 +502,9 @@ mod tests {
         assert_eq!(signature.scheme, SignatureScheme::Ed25519v1);
 
         let verification_key = key.verification_key();
-        assert!(verification_key.verify_operation(&operation, &signature).is_ok());
+        assert!(verification_key
+            .verify_operation(&operation, &signature)
+            .is_ok());
     }
 
     #[test]
@@ -519,7 +525,9 @@ mod tests {
         );
 
         let verification_key = key.verification_key();
-        assert!(verification_key.verify_operation(&tampered, &signature).is_err());
+        assert!(verification_key
+            .verify_operation(&tampered, &signature)
+            .is_err());
     }
 
     #[test]

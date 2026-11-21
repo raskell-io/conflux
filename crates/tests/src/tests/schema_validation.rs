@@ -195,10 +195,7 @@ fn schema_provides_merge_strategy_via_field_def() {
         service.fields["replicas"].merge_strategy,
         MergeStrategy::Max
     );
-    assert_eq!(
-        service.fields["image"].merge_strategy,
-        MergeStrategy::Lww
-    );
+    assert_eq!(service.fields["image"].merge_strategy, MergeStrategy::Lww);
     assert_eq!(
         service.fields["min_instances"].merge_strategy,
         MergeStrategy::Min

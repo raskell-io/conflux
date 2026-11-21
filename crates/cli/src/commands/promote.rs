@@ -64,9 +64,10 @@ pub fn run(args: PromoteArgs, config: &Config, config_dir: &Path) -> Result<()> 
         .with_context(|| format!("loading schema from {}", schema_path.display()))?;
 
     // Validate environments exist in schema
-    let envs = schema.environments.as_ref().ok_or_else(|| {
-        anyhow::anyhow!("no environments defined in schema")
-    })?;
+    let envs = schema
+        .environments
+        .as_ref()
+        .ok_or_else(|| anyhow::anyhow!("no environments defined in schema"))?;
 
     let all_envs: Vec<&str> = std::iter::once(envs.base.as_str())
         .chain(envs.overlays.iter().map(|o| o.name.as_str()))
@@ -107,9 +108,8 @@ pub fn run(args: PromoteArgs, config: &Config, config_dir: &Path) -> Result<()> 
     let mut document = Document::new();
 
     // Load document state
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -127,7 +127,10 @@ pub fn run(args: PromoteArgs, config: &Config, config_dir: &Path) -> Result<()> 
     )?;
 
     if promotable.is_empty() {
-        println!("No differences found between '{}' and '{}'.", args.from, args.to);
+        println!(
+            "No differences found between '{}' and '{}'.",
+            args.from, args.to
+        );
         return Ok(());
     }
 
@@ -162,9 +165,9 @@ pub fn run(args: PromoteArgs, config: &Config, config_dir: &Path) -> Result<()> 
     let actor = resolve_actor(args.actor.as_deref(), args.actor_class.as_deref())?;
 
     // Build intent
-    let intent = args.intent.unwrap_or_else(|| {
-        format!("promote {} -> {}", args.from, args.to)
-    });
+    let intent = args
+        .intent
+        .unwrap_or_else(|| format!("promote {} -> {}", args.from, args.to));
 
     // Create and apply SetOverride operations
     let mut applied_count = 0;

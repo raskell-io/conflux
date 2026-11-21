@@ -38,7 +38,10 @@ impl PostgresStore {
     /// # Errors
     ///
     /// Returns `StoreError::Postgres` if the connection fails.
-    pub async fn connect_with_pool_size(url: &str, max_connections: u32) -> Result<Self, StoreError> {
+    pub async fn connect_with_pool_size(
+        url: &str,
+        max_connections: u32,
+    ) -> Result<Self, StoreError> {
         let pool = PgPoolOptions::new()
             .max_connections(max_connections)
             .connect(url)
@@ -62,9 +65,7 @@ impl PostgresStore {
     ///
     /// Returns `StoreError::Postgres` if DDL execution fails.
     pub async fn create_tables(&self) -> Result<(), StoreError> {
-        self.pool
-            .execute(include_str!("schema.sql"))
-            .await?;
+        self.pool.execute(include_str!("schema.sql")).await?;
         Ok(())
     }
 }
@@ -247,24 +248,21 @@ impl AsyncStore for PostgresStore {
     }
 
     async fn operation_count(&self, document_id: &str) -> Result<u64, StoreError> {
-        let row: PgRow = sqlx_query(
-            "SELECT COUNT(*) as count FROM operations WHERE document_id = $1",
-        )
-        .bind(document_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: PgRow =
+            sqlx_query("SELECT COUNT(*) as count FROM operations WHERE document_id = $1")
+                .bind(document_id)
+                .fetch_one(&self.pool)
+                .await?;
 
         let count: i64 = get_value(&row, "count");
         Ok(count as u64)
     }
 
     async fn operation_exists(&self, operation_id: &Uuid) -> Result<bool, StoreError> {
-        let row: PgRow = sqlx_query(
-            "SELECT COUNT(*) as count FROM operations WHERE id = $1",
-        )
-        .bind(operation_id)
-        .fetch_one(&self.pool)
-        .await?;
+        let row: PgRow = sqlx_query("SELECT COUNT(*) as count FROM operations WHERE id = $1")
+            .bind(operation_id)
+            .fetch_one(&self.pool)
+            .await?;
 
         let count: i64 = get_value(&row, "count");
         Ok(count > 0)
@@ -421,12 +419,11 @@ impl AsyncStore for PostgresStore {
                 get_value(&count_row, "count")
             }
             None => {
-                let count_row: PgRow = sqlx_query(
-                    "SELECT COUNT(*) as count FROM operations WHERE document_id = $1",
-                )
-                .bind(document_id)
-                .fetch_one(&self.pool)
-                .await?;
+                let count_row: PgRow =
+                    sqlx_query("SELECT COUNT(*) as count FROM operations WHERE document_id = $1")
+                        .bind(document_id)
+                        .fetch_one(&self.pool)
+                        .await?;
                 get_value(&count_row, "count")
             }
         };
@@ -580,12 +577,11 @@ impl AsyncStore for PostgresStore {
                 get_value(&count_row, "count")
             }
             None => {
-                let count_row: PgRow = sqlx_query(
-                    "SELECT COUNT(*) as count FROM operations WHERE document_id = $1",
-                )
-                .bind(document_id)
-                .fetch_one(&self.pool)
-                .await?;
+                let count_row: PgRow =
+                    sqlx_query("SELECT COUNT(*) as count FROM operations WHERE document_id = $1")
+                        .bind(document_id)
+                        .fetch_one(&self.pool)
+                        .await?;
                 get_value(&count_row, "count")
             }
         };
@@ -618,12 +614,11 @@ impl AsyncStore for PostgresStore {
     }
 
     async fn load_version_vector(&self, document_id: &str) -> Result<String, StoreError> {
-        let row: Option<PgRow> = sqlx_query(
-            "SELECT data FROM version_vectors WHERE document_id = $1",
-        )
-        .bind(document_id)
-        .fetch_optional(&self.pool)
-        .await?;
+        let row: Option<PgRow> =
+            sqlx_query("SELECT data FROM version_vectors WHERE document_id = $1")
+                .bind(document_id)
+                .fetch_optional(&self.pool)
+                .await?;
 
         match row {
             Some(row) => {

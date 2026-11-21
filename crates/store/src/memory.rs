@@ -358,9 +358,9 @@ impl Store for MemoryStore {
 
     fn load_version_vector(&self, document_id: &str) -> Result<String, StoreError> {
         let vv = self.version_vectors.read();
-        vv.get(document_id)
-            .cloned()
-            .ok_or_else(|| StoreError::NotFound(format!("version vector for document {document_id}")))
+        vv.get(document_id).cloned().ok_or_else(|| {
+            StoreError::NotFound(format!("version vector for document {document_id}"))
+        })
     }
 }
 

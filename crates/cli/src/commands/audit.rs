@@ -147,10 +147,7 @@ fn run_export(args: ExportArgs, config: &Config, config_dir: &Path) -> Result<()
 fn run_verify(args: VerifyArgs) -> Result<()> {
     // Load key registry
     if !args.key_registry.exists() {
-        anyhow::bail!(
-            "Key registry not found: {}",
-            args.key_registry.display()
-        );
+        anyhow::bail!("Key registry not found: {}", args.key_registry.display());
     }
 
     let registry = PublicKeyRegistry::from_file(&args.key_registry)?;

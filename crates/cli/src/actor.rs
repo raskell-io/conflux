@@ -9,7 +9,10 @@ use conflux_core::{ActorClass, ActorId};
 /// 1. Explicit `--actor` flag
 /// 2. `CONFLUX_ACTOR` environment variable
 /// 3. Current user from the system
-pub fn resolve_actor(explicit_actor: Option<&str>, explicit_class: Option<&str>) -> Result<ActorId> {
+pub fn resolve_actor(
+    explicit_actor: Option<&str>,
+    explicit_class: Option<&str>,
+) -> Result<ActorId> {
     let actor_id = if let Some(actor) = explicit_actor {
         actor.to_string()
     } else if let Ok(actor) = std::env::var("CONFLUX_ACTOR") {

@@ -9,8 +9,8 @@ use conflux_git::{MilestoneProjector, OutputFormat, ProjectorConfig};
 use conflux_replication::{
     anti_entropy::AntiEntropyTask, client::PeerManager, leader::LeaderElectionTask,
     proto::replication_service_server::ReplicationServiceServer, service::ReplicationServiceImpl,
-    ClusterConfig as ReplicationClusterConfig, ClusterState, NodeId, PeerConfig as ReplicationPeerConfig,
-    ReconnectTask,
+    ClusterConfig as ReplicationClusterConfig, ClusterState, NodeId,
+    PeerConfig as ReplicationPeerConfig, ReconnectTask,
 };
 use conflux_schema::Schema;
 use conflux_store::SqliteStore;
@@ -78,9 +78,8 @@ pub async fn run(args: DaemonArgs, config: &Config, config_dir: &Path) -> Result
     let mut document = Document::new();
     let schema_info = schema.as_schema_info();
 
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(100000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(100000))?;
     let op_count = stored_ops.len();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -166,20 +165,14 @@ pub async fn run(args: DaemonArgs, config: &Config, config_dir: &Path) -> Result
                 )
             })?;
 
-        let replication_service = ReplicationServiceImpl::new(
-            cluster_state.clone(),
-            clock.clone(),
-            store.clone(),
-        );
+        let replication_service =
+            ReplicationServiceImpl::new(cluster_state.clone(), clock.clone(), store.clone());
 
         let grpc_server = Server::builder()
             .add_service(ReplicationServiceServer::new(replication_service))
             .serve(replication_addr);
 
-        tracing::info!(
-            "Replication gRPC server listening on {}",
-            replication_addr
-        );
+        tracing::info!("Replication gRPC server listening on {}", replication_addr);
 
         // Spawn background tasks
 
@@ -190,10 +183,8 @@ pub async fn run(args: DaemonArgs, config: &Config, config_dir: &Path) -> Result
         });
 
         // Reconnection task with exponential backoff
-        let reconnect_task = ReconnectTask::new(
-            peer_manager.clone(),
-            std::time::Duration::from_secs(10),
-        );
+        let reconnect_task =
+            ReconnectTask::new(peer_manager.clone(), std::time::Duration::from_secs(10));
         tokio::spawn(reconnect_task.run());
 
         let leader_task = LeaderElectionTask::new(

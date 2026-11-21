@@ -66,11 +66,7 @@ impl RoleResolver {
     }
 
     /// Checks if an assignment matches an actor.
-    fn assignment_matches(
-        &self,
-        assignment: &crate::config::Assignment,
-        actor: &ActorId,
-    ) -> bool {
+    fn assignment_matches(&self, assignment: &crate::config::Assignment, actor: &ActorId) -> bool {
         // Check actor class if specified
         if let Some(ref required_class) = assignment.actor_class {
             let actor_class: ActorClass = (*required_class).into();

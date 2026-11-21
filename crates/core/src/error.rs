@@ -63,6 +63,11 @@ pub enum OperationError {
     #[error("unknown environment: {0}")]
     UnknownEnvironment(String),
 
+    /// Merging the incoming state into the existing state failed, for example
+    /// because the schema changed the field's merge strategy.
+    #[error(transparent)]
+    Merge(#[from] MergeError),
+
     /// The operation kind is not yet implemented.
     #[error("not implemented: {0}")]
     NotImplemented(String),

@@ -114,10 +114,7 @@ mod tests {
 
     #[test]
     fn actor_gsi2_pk_format() {
-        assert_eq!(
-            Keys::actor_gsi2_pk("doc-1", "alice"),
-            "ACTOR#doc-1#alice"
-        );
+        assert_eq!(Keys::actor_gsi2_pk("doc-1", "alice"), "ACTOR#doc-1#alice");
     }
 
     #[test]

@@ -47,9 +47,8 @@ pub fn run(args: ConflictsArgs, config: &Config, config_dir: &Path) -> Result<()
     let mut document = Document::new();
 
     // Load document state
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);

@@ -99,19 +99,19 @@ pub fn run(args: BlameArgs, config: &Config, config_dir: &Path) -> Result<()> {
                     );
                 }
             }
-            OperationKind::RemoveEntity { entity_id } => {
-                if entity_id.to_string() == args.entity_id {
-                    field_blame.insert(
-                        "(deleted)".to_string(),
-                        FieldBlame {
-                            field: "(deleted)".to_string(),
-                            value: "true".to_string(),
-                            actor: op.actor.id.clone(),
-                            timestamp: op.timestamp.to_string(),
-                            intent: op.intent.clone(),
-                        },
-                    );
-                }
+            OperationKind::RemoveEntity { entity_id }
+                if entity_id.to_string() == args.entity_id =>
+            {
+                field_blame.insert(
+                    "(deleted)".to_string(),
+                    FieldBlame {
+                        field: "(deleted)".to_string(),
+                        value: "true".to_string(),
+                        actor: op.actor.id.clone(),
+                        timestamp: op.timestamp.to_string(),
+                        intent: op.intent.clone(),
+                    },
+                );
             }
             _ => {}
         }

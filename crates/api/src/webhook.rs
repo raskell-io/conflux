@@ -565,7 +565,10 @@ impl WebhookManager {
         let op = &event.operation;
         let (reason, message, entity_type, entity_id, field_path, namespace) = match &op.kind {
             OperationKind::SetField {
-                entity_id, field, value, ..
+                entity_id,
+                field,
+                value,
+                ..
             } => (
                 "Updated",
                 format!("Field '{}' updated to {:?}", field, value),
@@ -613,7 +616,10 @@ impl WebhookManager {
                 value,
             } => (
                 "OverrideUpdated",
-                format!("Field '{}' override for '{}' set to {:?}", field, environment, value),
+                format!(
+                    "Field '{}' override for '{}' set to {:?}",
+                    field, environment, value
+                ),
                 "Entity",
                 entity_id.to_string(),
                 Some(format!(".{}", field)),
@@ -625,7 +631,10 @@ impl WebhookManager {
                 environment,
                 ..
             } => {
-                let env_str = environment.as_ref().map(|e| format!(" in {}", e)).unwrap_or_default();
+                let env_str = environment
+                    .as_ref()
+                    .map(|e| format!(" in {}", e))
+                    .unwrap_or_default();
                 (
                     "ConflictResolved",
                     format!("Conflict on field '{}'{} resolved", field, env_str),
@@ -638,7 +647,10 @@ impl WebhookManager {
         };
 
         let mut labels = HashMap::new();
-        labels.insert("app.kubernetes.io/managed-by".to_string(), "conflux".to_string());
+        labels.insert(
+            "app.kubernetes.io/managed-by".to_string(),
+            "conflux".to_string(),
+        );
         if let Some(intent) = &op.intent {
             labels.insert("conflux.io/intent".to_string(), intent.clone());
         }

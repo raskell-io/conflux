@@ -2,6 +2,7 @@
 
 use crate::clock::HlcTimestamp;
 use crate::crdt::{CrdtMerge, LwwRegister};
+use crate::error::MergeError;
 use crate::field::ConflictState;
 use crate::field_state::FieldState;
 use crate::identity::{ActorId, EntityId};
@@ -67,7 +68,12 @@ impl Entity {
     }
 
     /// Sets an environment-specific field override.
-    pub fn set_override(&mut self, env: impl Into<String>, name: impl Into<String>, state: FieldState) {
+    pub fn set_override(
+        &mut self,
+        env: impl Into<String>,
+        name: impl Into<String>,
+        state: FieldState,
+    ) {
         self.overrides
             .entry(env.into())
             .or_default()
@@ -95,15 +101,18 @@ impl Entity {
     /// is merged via LWW. Children are merged via union. Overrides are
     /// merged per-environment.
     ///
-    /// # Panics
+    /// # Errors
     ///
-    /// Panics if the entities have different types.
-    pub fn merge(&self, other: &Self) -> (Self, Vec<ConflictInfo>) {
-        assert_eq!(
-            self.entity_type, other.entity_type,
-            "cannot merge entities of different types: {} vs {}",
-            self.entity_type, other.entity_type
-        );
+    /// Returns [`MergeError::EntityTypeMismatch`] if the entities have different
+    /// types, and [`MergeError::StrategyMismatch`] if a field's two states use
+    /// different merge strategies.
+    pub fn merge(&self, other: &Self) -> Result<(Self, Vec<ConflictInfo>), MergeError> {
+        if self.entity_type != other.entity_type {
+            return Err(MergeError::EntityTypeMismatch {
+                expected: self.entity_type.clone(),
+                actual: other.entity_type.clone(),
+            });
+        }
 
         let mut fields = BTreeMap::new();
         let mut conflicts = Vec::new();
@@ -115,7 +124,7 @@ impl Entity {
         for name in all_field_names {
             let merged_state = match (self.fields.get(name), other.fields.get(name)) {
                 (Some(a), Some(b)) => {
-                    let merged = a.merge(b);
+                    let merged = a.merge(b, name)?;
                     if let ConflictState::NeedsReview {
                         ref contending_values,
                     } = merged.conflict_state()
@@ -138,8 +147,11 @@ impl Entity {
 
         // Merge overrides per-environment
         let mut overrides = BTreeMap::new();
-        let all_envs: std::collections::BTreeSet<&String> =
-            self.overrides.keys().chain(other.overrides.keys()).collect();
+        let all_envs: std::collections::BTreeSet<&String> = self
+            .overrides
+            .keys()
+            .chain(other.overrides.keys())
+            .collect();
 
         for env in all_envs {
             let self_env = self.overrides.get(env);
@@ -159,7 +171,7 @@ impl Entity {
 
                 let merged_state = match (self_field, other_field) {
                     (Some(a), Some(b)) => {
-                        let merged = a.merge(b);
+                        let merged = a.merge(b, field_name)?;
                         if let ConflictState::NeedsReview {
                             ref contending_values,
                         } = merged.conflict_state()
@@ -206,7 +218,7 @@ impl Entity {
             tombstone,
         };
 
-        (entity, conflicts)
+        Ok((entity, conflicts))
     }
 }
 
@@ -276,7 +288,7 @@ mod tests {
             FieldState::new(FieldValue::Int(5000), ts2, bob, MergeStrategy::Lww),
         );
 
-        let (merged, conflicts) = e1.merge(&e2);
+        let (merged, conflicts) = e1.merge(&e2).unwrap();
         assert!(conflicts.is_empty());
         assert_eq!(
             merged.get_field("weight").unwrap().value(),

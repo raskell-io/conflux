@@ -73,7 +73,11 @@ impl SimpleSchemaInfo {
     }
 
     /// Adds an environment overlay with inheritance.
-    pub fn add_environment(&mut self, env: impl Into<String>, inherits: impl Into<String>) -> &mut Self {
+    pub fn add_environment(
+        &mut self,
+        env: impl Into<String>,
+        inherits: impl Into<String>,
+    ) -> &mut Self {
         self.env_parents.insert(env.into(), inherits.into());
         self
     }

@@ -90,7 +90,9 @@ fn persist_and_recover_document_from_operations() {
 
         assert_eq!(recovered_doc.entities.len(), 10);
 
-        let name = recovered_doc.get_field(&EntityId::new("item.5"), "name").unwrap();
+        let name = recovered_doc
+            .get_field(&EntityId::new("item.5"), "name")
+            .unwrap();
         assert_eq!(name, FieldValue::String("Item 5".into()));
     }
 }
@@ -183,6 +185,9 @@ fn operations_ordered_by_hlc_timestamp() {
     for i in 1..ops.len() {
         let prev_ts = &ops[i - 1].operation.timestamp;
         let curr_ts = &ops[i].operation.timestamp;
-        assert!(prev_ts < curr_ts, "Operations should be ordered by timestamp");
+        assert!(
+            prev_ts < curr_ts,
+            "Operations should be ordered by timestamp"
+        );
     }
 }

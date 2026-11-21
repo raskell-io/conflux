@@ -330,7 +330,9 @@ fn document_to_serializable_for_env(
         if let Some(field_names) = schema.entity_fields(&entity.entity_type) {
             for field_name in field_names {
                 // Use environment-aware field resolution
-                if let Some(value) = document.get_field_for_env(entity_id, field_name, environment, schema) {
+                if let Some(value) =
+                    document.get_field_for_env(entity_id, field_name, environment, schema)
+                {
                     fields.insert(field_name.to_string(), field_value_to_json(&value));
                 }
             }
@@ -518,7 +520,8 @@ mod tests {
         use std::env;
 
         // Create a temp directory for the test repo
-        let temp_dir = env::temp_dir().join(format!("conflux-git-env-test-{}", uuid::Uuid::new_v4()));
+        let temp_dir =
+            env::temp_dir().join(format!("conflux-git-env-test-{}", uuid::Uuid::new_v4()));
 
         let config = ProjectorConfig::new(&temp_dir)
             .with_format(OutputFormat::Yaml)
@@ -580,9 +583,15 @@ mod tests {
         let staging_file = fs::read_to_string(temp_dir.join("staging/route.yaml")).unwrap();
 
         // Production should have weight: 100, staging should have weight: 50
-        assert!(prod_file.contains("100"), "production should have weight 100");
+        assert!(
+            prod_file.contains("100"),
+            "production should have weight 100"
+        );
         assert!(staging_file.contains("50"), "staging should have weight 50");
-        assert!(!staging_file.contains("100"), "staging should NOT have weight 100");
+        assert!(
+            !staging_file.contains("100"),
+            "staging should NOT have weight 100"
+        );
 
         // Cleanup
         let _ = fs::remove_dir_all(&temp_dir);

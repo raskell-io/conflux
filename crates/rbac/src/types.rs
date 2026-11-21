@@ -412,7 +412,10 @@ mod tests {
     #[test]
     fn resource_display() {
         let resource = Resource::field("service", "api-gateway", "replicas").in_env("production");
-        assert_eq!(resource.to_string(), "service/api-gateway.replicas@production");
+        assert_eq!(
+            resource.to_string(),
+            "service/api-gateway.replicas@production"
+        );
     }
 
     #[test]

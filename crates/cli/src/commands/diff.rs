@@ -109,9 +109,8 @@ pub fn run(args: DiffArgs, config: &Config, config_dir: &Path) -> Result<()> {
 
     // Build current document
     let mut current_doc = Document::new();
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     for stored in stored_ops {
         let _ = current_doc.apply(&stored.operation, &schema_info, &clock);
     }
@@ -148,9 +147,8 @@ fn run_env_diff(
     // Load current document
     let clock = Clock::new();
     let mut document = Document::new();
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
     }
@@ -181,7 +179,8 @@ fn run_env_diff(
         };
 
         for field_name in field_names {
-            let from_value = document.get_field_for_env(entity_id, field_name, from_env, &schema_info);
+            let from_value =
+                document.get_field_for_env(entity_id, field_name, from_env, &schema_info);
             let to_value = document.get_field_for_env(entity_id, field_name, to_env, &schema_info);
 
             if from_value != to_value {
@@ -213,7 +212,10 @@ fn run_env_diff(
             }
             println!();
         }
-        println!("{} field(s) differ between '{}' and '{}'.", diff_count, from_env, to_env);
+        println!(
+            "{} field(s) differ between '{}' and '{}'.",
+            diff_count, from_env, to_env
+        );
     }
 
     Ok(())
@@ -263,8 +265,10 @@ fn run_env_resolved_diff(
                 };
 
                 for field_name in field_names {
-                    let current_value = current_doc.get_field_for_env(entity_id, field_name, env, schema_info);
-                    let base_value = base_doc.get_field_for_env(entity_id, field_name, env, schema_info);
+                    let current_value =
+                        current_doc.get_field_for_env(entity_id, field_name, env, schema_info);
+                    let base_value =
+                        base_doc.get_field_for_env(entity_id, field_name, env, schema_info);
 
                     if current_value != base_value {
                         modified += 1;
@@ -336,11 +340,7 @@ fn run_env_resolved_diff(
 }
 
 /// Standard milestone-based diff (original behavior).
-fn run_milestone_diff(
-    args: &DiffArgs,
-    base_doc: &Document,
-    current_doc: &Document,
-) -> Result<()> {
+fn run_milestone_diff(args: &DiffArgs, base_doc: &Document, current_doc: &Document) -> Result<()> {
     let mut added = 0;
     let mut modified = 0;
     let mut removed = 0;
@@ -388,10 +388,8 @@ fn run_milestone_diff(
                         modified += 1;
                         if !args.summary {
                             let base_value = base_entity.fields.get(field_name).unwrap().value();
-                            changes.push(format!(
-                                "- {}.{}: {:?}",
-                                entity_id, field_name, base_value
-                            ));
+                            changes
+                                .push(format!("- {}.{}: {:?}", entity_id, field_name, base_value));
                         }
                     }
                 }

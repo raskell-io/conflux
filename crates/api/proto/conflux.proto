@@ -130,6 +130,11 @@ message SubmitResponse {
 
   // Whether operation resulted in a conflict needing review.
   bool has_conflict = 3;
+
+  // Schema violations in the document state after the merge. The operation is
+  // still applied: rejecting merged state would break convergence between
+  // replicas, so violations are reported for an actor to fix.
+  repeated string violations = 4;
 }
 
 // Get full document state.

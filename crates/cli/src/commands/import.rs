@@ -76,7 +76,12 @@ pub fn run(args: ImportArgs, config: &Config, config_dir: &Path) -> Result<()> {
         anyhow::bail!(
             "entity type '{}' not found in schema. Available types: {}",
             args.entity_type,
-            schema.entities.keys().cloned().collect::<Vec<_>>().join(", ")
+            schema
+                .entities
+                .keys()
+                .cloned()
+                .collect::<Vec<_>>()
+                .join(", ")
         );
     }
 
@@ -127,9 +132,8 @@ pub fn run(args: ImportArgs, config: &Config, config_dir: &Path) -> Result<()> {
     let mut document = Document::new();
 
     // Load existing state from store
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(100000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(100000))?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -140,8 +144,8 @@ pub fn run(args: ImportArgs, config: &Config, config_dir: &Path) -> Result<()> {
 
     // Import each file
     for file in &files {
-        let content = std::fs::read_to_string(file)
-            .with_context(|| format!("reading {}", file.display()))?;
+        let content =
+            std::fs::read_to_string(file).with_context(|| format!("reading {}", file.display()))?;
         let parsed = parse_config_file(file, &content)?;
         let prefix = get_entity_prefix(&args, file);
 
@@ -217,8 +221,8 @@ fn collect_files_from_dir(
     recursive: bool,
     files: &mut Vec<PathBuf>,
 ) -> Result<()> {
-    for entry in std::fs::read_dir(dir)
-        .with_context(|| format!("reading directory {}", dir.display()))?
+    for entry in
+        std::fs::read_dir(dir).with_context(|| format!("reading directory {}", dir.display()))?
     {
         let entry = entry?;
         let path = entry.path();

@@ -5,6 +5,7 @@ use crate::crdt::{
     CrdtMerge, GrowOnlySet, LwwRegister, MaxRegister, MinRegister, ObservedRemoveSet,
     ReviewRegister,
 };
+use crate::error::MergeError;
 use crate::field::{ConflictState, FieldValue, MergeStrategy};
 use crate::identity::ActorId;
 use serde::{Deserialize, Serialize};
@@ -69,21 +70,44 @@ impl FieldState {
 
     /// Merges this field state with another.
     ///
-    /// Both states must be the same variant (same merge strategy).
-    /// Panics if variants differ — this should be prevented by schema validation.
-    pub fn merge(&self, other: &Self) -> Self {
-        match (self, other) {
+    /// Both states must use the same merge strategy. They can differ when a
+    /// schema changes a field's strategy while state written under the old
+    /// strategy is still live; that is reported as an error, not a panic.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MergeError::StrategyMismatch`] if the two states use different
+    /// merge strategies.
+    pub fn merge(&self, other: &Self, field: &str) -> Result<Self, MergeError> {
+        Ok(match (self, other) {
             (FieldState::Lww(a), FieldState::Lww(b)) => FieldState::Lww(a.merge(b)),
             (FieldState::Max(a), FieldState::Max(b)) => FieldState::Max(a.merge(b)),
             (FieldState::Min(a), FieldState::Min(b)) => FieldState::Min(a.merge(b)),
             (FieldState::GrowSet(a), FieldState::GrowSet(b)) => FieldState::GrowSet(a.merge(b)),
             (FieldState::OrSet(a), FieldState::OrSet(b)) => FieldState::OrSet(a.merge(b)),
             (FieldState::Review(a), FieldState::Review(b)) => FieldState::Review(a.merge(b)),
-            _ => panic!(
-                "cannot merge different FieldState variants: {:?} vs {:?}",
-                std::mem::discriminant(self),
-                std::mem::discriminant(other)
-            ),
+            _ => {
+                return Err(MergeError::StrategyMismatch {
+                    field: field.to_string(),
+                    reason: format!(
+                        "existing state uses '{}', incoming uses '{}'",
+                        self.strategy_name(),
+                        other.strategy_name()
+                    ),
+                })
+            }
+        })
+    }
+
+    /// The name of the merge strategy this state uses, as written in a schema.
+    pub fn strategy_name(&self) -> &'static str {
+        match self {
+            FieldState::Lww(_) => "lww",
+            FieldState::Max(_) => "max",
+            FieldState::Min(_) => "min",
+            FieldState::GrowSet(_) => "grow_set",
+            FieldState::OrSet(_) => "or_set",
+            FieldState::Review(_) => "review",
         }
     }
 
@@ -150,8 +174,30 @@ mod tests {
         let s1 = FieldState::new(FieldValue::Int(10), ts1, actor.clone(), MergeStrategy::Lww);
         let s2 = FieldState::new(FieldValue::Int(20), ts2, actor, MergeStrategy::Lww);
 
-        let merged = s1.merge(&s2);
+        let merged = s1.merge(&s2, "f").unwrap();
         assert_eq!(merged.value(), FieldValue::Int(20));
+    }
+
+    #[test]
+    fn merge_across_changed_strategy_returns_error_instead_of_panicking() {
+        // A schema change from lww to max leaves lww state live; the next write
+        // arrives as max state for the same field.
+        let clock = Clock::new();
+        let ts1 = clock.new_timestamp();
+        let ts2 = clock.new_timestamp();
+        let actor = make_actor("alice");
+
+        let existing = FieldState::new(FieldValue::Int(10), ts1, actor.clone(), MergeStrategy::Lww);
+        let incoming = FieldState::new(FieldValue::Int(20), ts2, actor, MergeStrategy::Max);
+
+        let err = existing.merge(&incoming, "weight").unwrap_err();
+        match err {
+            MergeError::StrategyMismatch { field, reason } => {
+                assert_eq!(field, "weight");
+                assert!(reason.contains("lww") && reason.contains("max"), "{reason}");
+            }
+            other => panic!("expected StrategyMismatch, got {other:?}"),
+        }
     }
 
     #[test]
@@ -164,7 +210,7 @@ mod tests {
         let s1 = FieldState::new(FieldValue::Int(100), ts1, actor.clone(), MergeStrategy::Max);
         let s2 = FieldState::new(FieldValue::Int(20), ts2, actor, MergeStrategy::Max);
 
-        let merged = s1.merge(&s2);
+        let merged = s1.merge(&s2, "f").unwrap();
         assert_eq!(merged.value(), FieldValue::Int(100));
     }
 
@@ -187,7 +233,7 @@ mod tests {
             MergeStrategy::GrowSet,
         );
 
-        let merged = s1.merge(&s2);
+        let merged = s1.merge(&s2, "f").unwrap();
         if let FieldValue::List(items) = merged.value() {
             let strings: Vec<String> = items
                 .into_iter()

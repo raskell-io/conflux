@@ -103,13 +103,19 @@ pub fn build_router_with_auth(state: AppState, auth_layer: AuthLayer) -> Router 
         // Environments
         .route("/v1/envs", get(handlers::list_environments))
         .route("/v1/envs/diff", get(handlers::diff_environments))
-        .route("/v1/envs/{env_name}/state", get(handlers::get_environment_state))
+        .route(
+            "/v1/envs/{env_name}/state",
+            get(handlers::get_environment_state),
+        )
         // Webhooks
         .route("/v1/webhooks", post(handlers::register_webhook))
         .route("/v1/webhooks", get(handlers::list_webhooks))
         .route("/v1/webhooks/{webhook_id}", get(handlers::get_webhook))
         .route("/v1/webhooks/{webhook_id}", put(handlers::update_webhook))
-        .route("/v1/webhooks/{webhook_id}", delete(handlers::delete_webhook))
+        .route(
+            "/v1/webhooks/{webhook_id}",
+            delete(handlers::delete_webhook),
+        )
         // Audit
         .route("/v1/audit/export", get(handlers::export_audit))
         // Auth middleware (wraps all routes)
@@ -157,6 +163,10 @@ mod tests {
     use tower::ServiceExt;
 
     fn test_state() -> AppState {
+        test_state_with_weight_range(None)
+    }
+
+    fn test_state_with_weight_range(range: Option<(f64, f64)>) -> AppState {
         use conflux_core::MergeStrategy;
         use conflux_schema::{ConflictMode, EntityDef, FieldDef, FieldType};
         use std::collections::HashMap;
@@ -172,7 +182,7 @@ mod tests {
                 conflict: ConflictMode::Auto,
                 target: None,
                 required: false,
-                range: None,
+                range,
                 allowed_values: None,
                 pattern: None,
             },
@@ -232,6 +242,57 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.status(), StatusCode::OK);
+    }
+
+    async fn post_op(router: &axum::Router, body: &'static str) -> serde_json::Value {
+        let response = router
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/ops")
+                    .header("content-type", "application/json")
+                    .header("x-conflux-actor", "test-user")
+                    .header("x-conflux-actor-class", "human")
+                    .body(Body::from(body))
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        serde_json::from_slice(&bytes).unwrap()
+    }
+
+    #[tokio::test]
+    async fn submit_reports_post_merge_violations() {
+        let router = build_router(test_state_with_weight_range(Some((0.0, 100.0))));
+
+        post_op(
+            &router,
+            r#"{"type": "insert_entity", "entity_id": "route.api", "entity_type": "route"}"#,
+        )
+        .await;
+
+        // In range: no violations, and the field is omitted from the response.
+        let ok = post_op(
+            &router,
+            r#"{"type": "set_field", "entity_id": "route.api", "field": "weight", "value": 50}"#,
+        )
+        .await;
+        assert!(ok.get("violations").is_none(), "{ok}");
+
+        // Out of range: still applied (merges must converge), but reported.
+        let bad = post_op(
+            &router,
+            r#"{"type": "set_field", "entity_id": "route.api", "field": "weight", "value": 500}"#,
+        )
+        .await;
+        let violations = bad["violations"].as_array().expect("violations reported");
+        assert_eq!(violations.len(), 1, "{bad}");
+        assert!(violations[0].as_str().unwrap().contains("weight"), "{bad}");
     }
 
     #[tokio::test]
@@ -320,7 +381,9 @@ mod tests {
 
     fn test_state_with_envs() -> AppState {
         use conflux_core::MergeStrategy;
-        use conflux_schema::{ConflictMode, EntityDef, EnvironmentsDef, FieldDef, FieldType, OverlayDef};
+        use conflux_schema::{
+            ConflictMode, EntityDef, EnvironmentsDef, FieldDef, FieldType, OverlayDef,
+        };
         use std::collections::HashMap;
 
         let mut fields = HashMap::new();

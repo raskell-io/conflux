@@ -43,7 +43,11 @@ impl ApiKeyAuthenticator {
     /// Returns an error if the file cannot be read or parsed.
     pub fn from_file(path: &Path) -> Result<Self, ApiError> {
         let content = std::fs::read_to_string(path).map_err(|e| {
-            ApiError::Internal(format!("failed to read API keys file {}: {}", path.display(), e))
+            ApiError::Internal(format!(
+                "failed to read API keys file {}: {}",
+                path.display(),
+                e
+            ))
         })?;
 
         let file: ApiKeysFile = toml::from_str(&content).map_err(|e| {
@@ -190,7 +194,9 @@ mod tests {
         let authenticated = result.unwrap();
         assert_eq!(authenticated.actor.id, "test-actor");
         assert_eq!(authenticated.actor.class, ActorClass::Pipeline);
-        assert!(matches!(authenticated.method, AuthMethod::ApiKey { key_id } if key_id == "Test Key"));
+        assert!(
+            matches!(authenticated.method, AuthMethod::ApiKey { key_id } if key_id == "Test Key")
+        );
     }
 
     #[test]
