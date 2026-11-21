@@ -109,7 +109,11 @@ impl Table {
         println!("{header_line}");
 
         // Print separator
-        let separator: String = widths.iter().map(|w| "-".repeat(*w)).collect::<Vec<_>>().join("  ");
+        let separator: String = widths
+            .iter()
+            .map(|w| "-".repeat(*w))
+            .collect::<Vec<_>>()
+            .join("  ");
         println!("{separator}");
 
         // Print rows

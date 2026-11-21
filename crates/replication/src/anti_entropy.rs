@@ -91,12 +91,13 @@ impl AntiEntropyTask {
 
     /// Performs a sync with a specific peer.
     async fn sync_with_peer(&self, peer_id: &NodeId) -> Result<(), ReplicationError> {
-        let mut client = self.peers.get(peer_id).ok_or_else(|| {
-            ReplicationError::SyncFailed {
+        let mut client = self
+            .peers
+            .get(peer_id)
+            .ok_or_else(|| ReplicationError::SyncFailed {
                 peer: peer_id.to_string(),
                 reason: "peer not found".to_string(),
-            }
-        })?;
+            })?;
 
         // Get our version vector
         let our_vv = self.state.version_vector.read().clone();

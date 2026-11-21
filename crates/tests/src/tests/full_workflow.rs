@@ -107,10 +107,14 @@ fn full_workflow_create_entities_set_fields_persist() {
     let entity = document.get_entity(&EntityId::new("service.api")).unwrap();
     assert_eq!(entity.entity_type, "service");
 
-    let image = document.get_field(&EntityId::new("service.api"), "image").unwrap();
+    let image = document
+        .get_field(&EntityId::new("service.api"), "image")
+        .unwrap();
     assert_eq!(image, FieldValue::String("myapp:v1.0".into()));
 
-    let replicas = document.get_field(&EntityId::new("service.api"), "replicas").unwrap();
+    let replicas = document
+        .get_field(&EntityId::new("service.api"), "replicas")
+        .unwrap();
     assert_eq!(replicas, FieldValue::Int(3));
 
     // 5. Verify persistence
@@ -127,7 +131,9 @@ fn full_workflow_create_entities_set_fields_persist() {
             .unwrap();
     }
 
-    let rebuilt_image = rebuilt_doc.get_field(&EntityId::new("service.api"), "image").unwrap();
+    let rebuilt_image = rebuilt_doc
+        .get_field(&EntityId::new("service.api"), "image")
+        .unwrap();
     assert_eq!(rebuilt_image, image);
 }
 
@@ -241,7 +247,13 @@ fn workflow_with_milestones() {
 
     // Project to git
     let result = projector
-        .project(&document, ops.clone(), &["production".to_string()], "Initial setup", &schema_info)
+        .project(
+            &document,
+            ops.clone(),
+            &["production".to_string()],
+            "Initial setup",
+            &schema_info,
+        )
         .expect("project milestone");
 
     assert!(!result.commit_sha.is_empty());

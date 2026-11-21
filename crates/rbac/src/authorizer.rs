@@ -1,10 +1,10 @@
 //! Authorization checks.
 
 use crate::config::RbacConfig;
-use std::str::FromStr;
 use crate::resolver::RoleResolver;
 use crate::types::{Action, Resource};
 use conflux_core::ActorId;
+use std::str::FromStr;
 use std::sync::Arc;
 
 /// Context for an authorization check.
@@ -178,10 +178,7 @@ impl Authorizer for ChainAuthorizer {
 
         // If no authorizer allows, deny
         AuthzResult::Denied(DenialReason {
-            message: format!(
-                "no authorizer allows {} on {}",
-                ctx.action, ctx.resource
-            ),
+            message: format!("no authorizer allows {} on {}", ctx.action, ctx.resource),
             action: ctx.action,
             resource: ctx.resource.to_string(),
         })
@@ -244,11 +241,7 @@ mod tests {
         let authz = test_authorizer();
         let actor = ActorId::new("alice", ActorClass::Human);
 
-        let ctx = AuthzContext::new(
-            actor,
-            Action::Admin,
-            Resource::global(),
-        );
+        let ctx = AuthzContext::new(actor, Action::Admin, Resource::global());
 
         assert_eq!(authz.authorize(&ctx), AuthzResult::Allowed);
     }
@@ -342,19 +335,14 @@ mod tests {
         let authz = RbacAuthorizer::allow_all();
         let actor = ActorId::new("anyone", ActorClass::Human);
 
-        let ctx = AuthzContext::new(
-            actor,
-            Action::Admin,
-            Resource::global(),
-        );
+        let ctx = AuthzContext::new(actor, Action::Admin, Resource::global());
 
         assert_eq!(authz.authorize(&ctx), AuthzResult::Allowed);
     }
 
     #[test]
     fn chain_authorizer() {
-        let chain = ChainAuthorizer::new()
-            .with_authorizer(test_authorizer());
+        let chain = ChainAuthorizer::new().with_authorizer(test_authorizer());
 
         let actor = ActorId::new("alice", ActorClass::Human);
         let ctx = AuthzContext::new(actor, Action::Admin, Resource::global());

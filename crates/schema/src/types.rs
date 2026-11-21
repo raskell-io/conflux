@@ -64,7 +64,7 @@ pub enum FieldType {
 }
 
 impl FieldType {
-    /// Parses a field type string (e.g., "string", "int", "list<address>").
+    /// Parses a field type string (e.g., "string", "int", `"list<address>"`).
     pub fn parse(s: &str) -> Option<Self> {
         if let Some(inner) = s.strip_prefix("list<").and_then(|s| s.strip_suffix('>')) {
             let inner_type = Self::parse(inner).map(Box::new);

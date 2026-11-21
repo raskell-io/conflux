@@ -102,7 +102,7 @@ conflux daemon --port 8080
 1. **Actors submit typed operations** — `SetField(route.api-v1, weight, 80, actor=autoscaler)`, not a text diff
 2. **Schema defines merge rules** — Each field declares its merge strategy (last-writer-wins, max-wins, add-wins set, require-review)
 3. **Engine merges deterministically** — CRDT-backed, per-field, causal ordering via hybrid logical clocks
-4. **State is validated post-merge** — Schema constraints catch semantic errors that clean merges can't
+4. **State is validated post-merge** — Schema constraints catch semantic errors that clean merges can't; violations come back with the write and in the log, rather than rejecting a merged state
 5. **Milestones project to git** — Periodic snapshots with structured commit messages and full causal attribution
 
 ## Features
@@ -116,7 +116,7 @@ conflux daemon --port 8080
 | **Git Milestones** | Periodic snapshots to git with structured commit messages and operation attribution |
 | **Format Agnostic** | Import YAML, JSON, TOML, KDL, Jsonnet, CUE. Export to YAML, JSON, TOML, KDL, XML, HCL. Extensible via serializer plugins |
 | **Operation Log** | Append-only audit trail of every mutation with actor identity and intent |
-| **Post-Merge Validation** | Schema constraints enforced after every merge — convergence + correctness |
+| **Post-Merge Validation** | Schema constraints checked after every write; violations are reported with the response, so replicas still converge |
 | **API Key & mTLS Auth** | Secure API access with hashed API keys or client certificates |
 | **Role-Based Access Control** | Granular permissions per entity, field, and environment with role inheritance |
 | **Signed Operations** | Ed25519 digital signatures on operations for cryptographic auditability |

@@ -61,9 +61,8 @@ pub fn run(args: SetArgs, config: &Config, config_dir: &Path) -> Result<()> {
     let mut document = Document::new();
 
     // Load existing state from store
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     let schema_info = schema.as_schema_info();
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -88,7 +87,12 @@ pub fn run(args: SetArgs, config: &Config, config_dir: &Path) -> Result<()> {
             anyhow::bail!(
                 "entity type '{}' not found in schema. Available types: {}",
                 entity_type,
-                schema.entities.keys().cloned().collect::<Vec<_>>().join(", ")
+                schema
+                    .entities
+                    .keys()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
             );
         }
 
@@ -171,7 +175,9 @@ fn parse_value(s: &str, field_def: Option<&conflux_schema::FieldDef>) -> Result<
                 Ok(FieldValue::Int(i))
             }
             FieldType::Float => {
-                let f: f64 = s.parse().with_context(|| format!("parsing '{s}' as float"))?;
+                let f: f64 = s
+                    .parse()
+                    .with_context(|| format!("parsing '{s}' as float"))?;
                 Ok(FieldValue::Float(f))
             }
             FieldType::Bool => {

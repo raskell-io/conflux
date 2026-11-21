@@ -103,7 +103,10 @@ impl AuditExportQuery {
     pub fn until_wall_clock(mut self, iso8601: &str) -> Self {
         if let Ok(dt) = DateTime::parse_from_rfc3339(iso8601) {
             // Format as HLC-compatible string with max counter/id
-            let ts_str = format!("{}/4294967295/18446744073709551615", dt.format("%Y-%m-%dT%H:%M:%S%.9fZ"));
+            let ts_str = format!(
+                "{}/4294967295/18446744073709551615",
+                dt.format("%Y-%m-%dT%H:%M:%S%.9fZ")
+            );
             if let Ok(ts) = serde_json::from_value::<HlcTimestamp>(serde_json::json!(ts_str)) {
                 self.until = Some(ts);
             }
@@ -247,8 +250,7 @@ impl<'a, S: Store + ?Sized> AuditExporter<'a, S> {
             let line = serde_json::to_string(&entry)
                 .map_err(|e| crate::StoreError::Backend(e.to_string()))?;
 
-            writeln!(writer, "{}", line)
-                .map_err(|e| crate::StoreError::Backend(e.to_string()))?;
+            writeln!(writer, "{}", line).map_err(|e| crate::StoreError::Backend(e.to_string()))?;
         }
 
         Ok(stats)
@@ -309,7 +311,10 @@ impl AuditVerifier {
                 Some(signature) => {
                     result.signed_entries += 1;
 
-                    match self.key_registry.verify_operation(&entry.operation, signature) {
+                    match self
+                        .key_registry
+                        .verify_operation(&entry.operation, signature)
+                    {
                         Ok(()) => {
                             result.valid_signatures += 1;
                         }
@@ -465,13 +470,8 @@ mod tests {
         let clock = Clock::new();
 
         let ts = clock.new_timestamp();
-        let mut op = conflux_core::Operation::set_field(
-            "entity.1",
-            "field",
-            FieldValue::Int(1),
-            &actor,
-            ts,
-        );
+        let mut op =
+            conflux_core::Operation::set_field("entity.1", "field", FieldValue::Int(1), &actor, ts);
 
         // Sign the operation
         let signature = signing_key.sign_operation(&op, "alice@2024").unwrap();
@@ -491,7 +491,10 @@ mod tests {
         let output_str = String::from_utf8(output).unwrap();
         let entry: AuditEntry = serde_json::from_str(output_str.lines().next().unwrap()).unwrap();
         assert_eq!(entry.metadata.signature_verified, Some(true));
-        assert_eq!(entry.metadata.signature_key_id, Some("alice@2024".to_string()));
+        assert_eq!(
+            entry.metadata.signature_key_id,
+            Some("alice@2024".to_string())
+        );
     }
 
     #[test]
@@ -503,13 +506,8 @@ mod tests {
         let actor = ActorId::new("test-actor", ActorClass::Human);
         let clock = Clock::new();
         let ts = clock.new_timestamp();
-        let mut op = conflux_core::Operation::set_field(
-            "entity.1",
-            "field",
-            FieldValue::Int(1),
-            &actor,
-            ts,
-        );
+        let mut op =
+            conflux_core::Operation::set_field("entity.1", "field", FieldValue::Int(1), &actor, ts);
 
         let signature = signing_key.sign_operation(&op, "test@2024").unwrap();
         op = op.with_signature(signature);

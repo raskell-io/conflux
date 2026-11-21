@@ -168,9 +168,7 @@ pub fn find_config_file() -> Result<PathBuf> {
         match dir.parent() {
             Some(parent) => dir = parent,
             None => {
-                anyhow::bail!(
-                    "no conflux.toml found in current directory or any parent directory"
-                );
+                anyhow::bail!("no conflux.toml found in current directory or any parent directory");
             }
         }
     }

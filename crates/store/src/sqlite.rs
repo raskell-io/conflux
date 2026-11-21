@@ -190,8 +190,8 @@ impl SqliteStore {
     /// Returns `StoreError::NotFound` if the operation doesn't exist.
     pub fn get_operation(&self, operation_id: &Uuid) -> Result<StoredOperation, StoreError> {
         let conn = self.conn.lock();
-        let mut stmt = conn
-            .prepare("SELECT payload, document_id, created_at FROM operations WHERE id = ?1")?;
+        let mut stmt =
+            conn.prepare("SELECT payload, document_id, created_at FROM operations WHERE id = ?1")?;
 
         let result = stmt.query_row(params![operation_id.to_string()], |row| {
             let payload: String = row.get(0)?;
@@ -627,7 +627,8 @@ impl SqliteStore {
             Some(ts) => (
                 "SELECT payload, document_id, created_at FROM operations
                  WHERE document_id = ?1 AND actor_id = ?2 AND hlc_timestamp > ?3
-                 ORDER BY hlc_timestamp ASC".to_string(),
+                 ORDER BY hlc_timestamp ASC"
+                    .to_string(),
                 vec![
                     Box::new(document_id.to_string()),
                     Box::new(actor_id.to_string()),
@@ -637,7 +638,8 @@ impl SqliteStore {
             None => (
                 "SELECT payload, document_id, created_at FROM operations
                  WHERE document_id = ?1 AND actor_id = ?2
-                 ORDER BY hlc_timestamp ASC".to_string(),
+                 ORDER BY hlc_timestamp ASC"
+                    .to_string(),
                 vec![
                     Box::new(document_id.to_string()),
                     Box::new(actor_id.to_string()),
@@ -766,7 +768,14 @@ impl crate::traits::Store for SqliteStore {
         hlc_range_end: &HlcTimestamp,
         message: Option<&str>,
     ) -> Result<Uuid, StoreError> {
-        SqliteStore::record_milestone(self, document_id, git_commit, hlc_range_start, hlc_range_end, message)
+        SqliteStore::record_milestone(
+            self,
+            document_id,
+            git_commit,
+            hlc_range_start,
+            hlc_range_end,
+            message,
+        )
     }
 
     fn latest_milestone(&self, document_id: &str) -> Result<Option<StoredMilestone>, StoreError> {

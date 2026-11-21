@@ -1,6 +1,6 @@
 //! Authentication middleware for Tower/Axum.
 
-use super::api_key::{AuthMethod, AuthenticatedActor, ApiKeyAuthenticator};
+use super::api_key::{ApiKeyAuthenticator, AuthMethod, AuthenticatedActor};
 use super::config::{AuthConfig, AuthMode};
 use super::extractor::parse_actor_class;
 use super::mtls::{extract_cert_info_from_headers, MtlsAuthenticator};
@@ -272,10 +272,8 @@ mod tests {
             .uri("/v1/state")
             .body(Body::empty())
             .unwrap();
-        req.headers_mut().insert(
-            API_KEY_HEADER,
-            HeaderValue::from_static("test-key"),
-        );
+        req.headers_mut()
+            .insert(API_KEY_HEADER, HeaderValue::from_static("test-key"));
 
         let result = authenticate(&req, &config, Some(&api_key_auth), None);
         assert!(result.is_ok());
@@ -298,10 +296,8 @@ mod tests {
             .uri("/v1/state")
             .body(Body::empty())
             .unwrap();
-        req.headers_mut().insert(
-            API_KEY_HEADER,
-            HeaderValue::from_static("wrong-key"),
-        );
+        req.headers_mut()
+            .insert(API_KEY_HEADER, HeaderValue::from_static("wrong-key"));
 
         let result = authenticate(&req, &config, Some(&api_key_auth), None);
         assert!(result.is_err());
@@ -313,14 +309,10 @@ mod tests {
             .uri("/v1/state")
             .body(Body::empty())
             .unwrap();
-        req.headers_mut().insert(
-            LEGACY_ACTOR_HEADER,
-            HeaderValue::from_static("legacy-user"),
-        );
-        req.headers_mut().insert(
-            LEGACY_ACTOR_CLASS_HEADER,
-            HeaderValue::from_static("human"),
-        );
+        req.headers_mut()
+            .insert(LEGACY_ACTOR_HEADER, HeaderValue::from_static("legacy-user"));
+        req.headers_mut()
+            .insert(LEGACY_ACTOR_CLASS_HEADER, HeaderValue::from_static("human"));
 
         let result = try_legacy_auth(&req);
         assert!(result.is_some());

@@ -120,9 +120,7 @@ pub mod headers {
 ///
 /// This is used when running behind a TLS-terminating reverse proxy
 /// that passes certificate information via headers.
-pub fn extract_cert_info_from_headers(
-    headers: &axum::http::HeaderMap,
-) -> Option<ClientCertInfo> {
+pub fn extract_cert_info_from_headers(headers: &axum::http::HeaderMap) -> Option<ClientCertInfo> {
     let fingerprint = headers
         .get(headers::CLIENT_CERT_FINGERPRINT)
         .and_then(|v| v.to_str().ok())?

@@ -98,7 +98,8 @@ fn run_create(args: CreateArgs, config: &Config, config_dir: &Path) -> Result<()
     let mut document = Document::new();
 
     // Load document state
-    let stored_ops = store.query_operations(&OperationQuery::new(&config.document_id).limit(10000))?;
+    let stored_ops =
+        store.query_operations(&OperationQuery::new(&config.document_id).limit(10000))?;
     let schema_info = schema.as_schema_info();
     for stored in &stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
@@ -151,7 +152,13 @@ fn run_create(args: CreateArgs, config: &Config, config_dir: &Path) -> Result<()
     let projector = MilestoneProjector::new(projector_config);
 
     // Project to git with environment-aware field resolution
-    let result = projector.project(&document, operations, &environments, &args.message, &schema_info)?;
+    let result = projector.project(
+        &document,
+        operations,
+        &environments,
+        &args.message,
+        &schema_info,
+    )?;
 
     // Record milestone
     let milestone_id = if let (Some(start), Some(end)) = (result.hlc_start, result.hlc_end) {

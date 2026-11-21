@@ -67,8 +67,7 @@ pub mod state;
 pub mod webhook;
 
 pub use auth::{
-    Actor, ApiKeyAuthenticator, AuthConfig, AuthLayer, AuthMode, AuthorizedActor,
-    MtlsAuthenticator,
+    Actor, ApiKeyAuthenticator, AuthConfig, AuthLayer, AuthMode, AuthorizedActor, MtlsAuthenticator,
 };
 pub use error::ApiError;
 pub use grpc::{pb, ConfluxGrpcService, StateChangeEvent};
@@ -78,6 +77,6 @@ pub use server::{
 };
 pub use state::AppState;
 pub use webhook::{
-    ConflictPayload, GitOpsInvolvedObject, GitOpsMetadata, GitOpsPayload, GitOpsSource,
-    Webhook, WebhookConfig, WebhookEventFilter, WebhookFormat, WebhookManager, WebhookPayload,
+    ConflictPayload, GitOpsInvolvedObject, GitOpsMetadata, GitOpsPayload, GitOpsSource, Webhook,
+    WebhookConfig, WebhookEventFilter, WebhookFormat, WebhookManager, WebhookPayload,
 };

@@ -198,7 +198,10 @@ fn format_operation_kind(kind: &conflux_core::OperationKind) -> String {
                     entity_id, field, env, chosen_value
                 )
             } else {
-                format!("resolve_conflict({}.{} = {:?})", entity_id, field, chosen_value)
+                format!(
+                    "resolve_conflict({}.{} = {:?})",
+                    entity_id, field, chosen_value
+                )
             }
         }
     }

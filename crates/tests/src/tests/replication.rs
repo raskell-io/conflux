@@ -1,9 +1,7 @@
 //! Integration tests for multi-node replication.
 
 use conflux_core::{ActorClass, ActorId, Clock, FieldValue, Operation};
-use conflux_replication::{
-    ClusterConfig, ClusterRole, ClusterState, NodeId, VersionVector,
-};
+use conflux_replication::{ClusterConfig, ClusterRole, ClusterState, NodeId, VersionVector};
 use conflux_store::SqliteStore;
 
 fn test_actor(name: &str) -> ActorId {

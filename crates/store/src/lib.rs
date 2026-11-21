@@ -10,8 +10,8 @@
 //!
 //! # Async Backends (feature-gated)
 //!
-//! - [`PostgresStore`] — PostgreSQL backend (feature: `postgres`)
-//! - [`DynamoStore`] — DynamoDB backend (feature: `dynamodb`)
+//! - `PostgresStore` — PostgreSQL backend (feature: `postgres`)
+//! - `DynamoStore` — DynamoDB backend (feature: `dynamodb`)
 //!
 //! # Using the Store Trait
 //!

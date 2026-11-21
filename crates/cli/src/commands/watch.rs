@@ -77,9 +77,8 @@ pub async fn run(args: WatchArgs, config: &Config, config_dir: &Path) -> Result<
     let mut document = Document::new();
 
     // Load initial state
-    let stored_ops = store.query_operations(
-        &conflux_store::OperationQuery::new(&config.document_id).limit(10000),
-    )?;
+    let stored_ops = store
+        .query_operations(&conflux_store::OperationQuery::new(&config.document_id).limit(10000))?;
     for stored in stored_ops {
         let _ = document.apply(&stored.operation, &schema_info, &clock);
     }

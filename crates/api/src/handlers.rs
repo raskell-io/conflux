@@ -118,14 +118,14 @@ pub async fn submit_operation(
     // Get schema info from the configured schema
     let schema_info = state.schema.as_schema_info();
 
-    // Apply to document
-    let (conflict, conflict_info) = {
+    // Apply to document, then validate the merged state
+    let (conflict, conflict_info, violations) = {
         let mut doc = state
             .document
             .write()
             .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
 
-        match doc.apply(&operation, &schema_info, &state.clock)? {
+        let (conflict, conflict_info) = match doc.apply(&operation, &schema_info, &state.clock)? {
             ApplyResult::Applied => (false, None),
             ApplyResult::Conflict(info) => (
                 true,
@@ -139,7 +139,8 @@ pub async fn submit_operation(
                         .collect(),
                 }),
             ),
-        }
+        };
+        (conflict, conflict_info, post_merge_violations(&state, &doc))
     };
 
     // Persist to store
@@ -156,7 +157,27 @@ pub async fn submit_operation(
         timestamp: operation.timestamp.to_string(),
         conflict,
         conflict_info,
+        violations,
     }))
+}
+
+/// Validates the merged document against the schema and logs any violations.
+///
+/// CRDT merges always converge, but the converged state can still break schema
+/// constraints (a range, a required field, a reference to a removed entity).
+/// The violations are reported to the caller rather than rejected, because
+/// refusing an already-merged state would make replicas diverge.
+pub(crate) fn post_merge_violations(state: &AppState, doc: &conflux_core::Document) -> Vec<String> {
+    let violations: Vec<String> = state
+        .schema
+        .validate_document(doc)
+        .iter()
+        .map(ToString::to_string)
+        .collect();
+    for v in &violations {
+        tracing::warn!(document = %state.document_id, "post-merge validation: {v}");
+    }
+    violations
 }
 
 /// Submit multiple operations atomically.
@@ -247,31 +268,33 @@ pub async fn batch_operations(
             operation = operation.with_intent(intent);
         }
 
-        // Apply to document
-        let (conflict, conflict_info) = {
+        // Apply to document, then validate the merged state
+        let (conflict, conflict_info, violations) = {
             let mut doc = state
                 .document
                 .write()
                 .map_err(|e| ApiError::Internal(format!("lock poisoned: {e}")))?;
 
-            match doc.apply(&operation, &schema_info, &state.clock)? {
-                ApplyResult::Applied => (false, None),
-                ApplyResult::Conflict(info) => {
-                    conflicts += 1;
-                    (
-                        true,
-                        Some(ConflictInfoDto {
-                            entity_id: info.entity_id.to_string(),
-                            field: info.field,
-                            contending_values: info
-                                .contending_values
-                                .iter()
-                                .map(field_value_to_json)
-                                .collect(),
-                        }),
-                    )
-                }
-            }
+            let (conflict, conflict_info) =
+                match doc.apply(&operation, &schema_info, &state.clock)? {
+                    ApplyResult::Applied => (false, None),
+                    ApplyResult::Conflict(info) => {
+                        conflicts += 1;
+                        (
+                            true,
+                            Some(ConflictInfoDto {
+                                entity_id: info.entity_id.to_string(),
+                                field: info.field,
+                                contending_values: info
+                                    .contending_values
+                                    .iter()
+                                    .map(field_value_to_json)
+                                    .collect(),
+                            }),
+                        )
+                    }
+                };
+            (conflict, conflict_info, post_merge_violations(&state, &doc))
         };
 
         // Persist to store
@@ -288,6 +311,7 @@ pub async fn batch_operations(
             timestamp: operation.timestamp.to_string(),
             conflict,
             conflict_info,
+            violations,
         });
     }
 
@@ -677,7 +701,9 @@ pub async fn get_environment_state(
         if let Some(field_names) = schema_info.entity_fields(&entity.entity_type) {
             for field_name in field_names {
                 // Resolve field value for this environment
-                if let Some(value) = doc.get_field_for_env(entity_id, field_name, &env_name, &schema_info) {
+                if let Some(value) =
+                    doc.get_field_for_env(entity_id, field_name, &env_name, &schema_info)
+                {
                     fields.insert(field_name.to_string(), field_value_to_json(&value));
 
                     // Determine source (which env the value came from)
@@ -738,8 +764,10 @@ pub async fn diff_environments(
     for (entity_id, entity) in &doc.entities {
         if let Some(field_names) = schema_info.entity_fields(&entity.entity_type) {
             for field_name in field_names {
-                let from_value = doc.get_field_for_env(entity_id, field_name, &params.from, &schema_info);
-                let to_value = doc.get_field_for_env(entity_id, field_name, &params.to, &schema_info);
+                let from_value =
+                    doc.get_field_for_env(entity_id, field_name, &params.from, &schema_info);
+                let to_value =
+                    doc.get_field_for_env(entity_id, field_name, &params.to, &schema_info);
 
                 // Check if values differ
                 if from_value != to_value {
@@ -959,10 +987,18 @@ pub async fn update_webhook(
         config.enabled = enabled;
     }
     if let Some(filter) = req.entity_filter {
-        config.entity_filter = if filter.is_empty() { None } else { Some(filter) };
+        config.entity_filter = if filter.is_empty() {
+            None
+        } else {
+            Some(filter)
+        };
     }
     if let Some(filter) = req.field_filter {
-        config.field_filter = if filter.is_empty() { None } else { Some(filter) };
+        config.field_filter = if filter.is_empty() {
+            None
+        } else {
+            Some(filter)
+        };
     }
     if let Some(event_filter) = req.event_filter {
         config.event_filter = match event_filter.to_lowercase().as_str() {
@@ -1060,8 +1096,14 @@ pub async fn export_audit(
     let response = axum::response::Response::builder()
         .status(axum::http::StatusCode::OK)
         .header(header::CONTENT_TYPE, "application/x-ndjson")
-        .header("X-Audit-Operations-Exported", stats.operations_exported.to_string())
-        .header("X-Audit-Signature-Failures", stats.signature_failures.to_string())
+        .header(
+            "X-Audit-Operations-Exported",
+            stats.operations_exported.to_string(),
+        )
+        .header(
+            "X-Audit-Signature-Failures",
+            stats.signature_failures.to_string(),
+        )
         .body(Body::from(output))
         .map_err(|e| ApiError::Internal(format!("response build failed: {e}")))?;
 

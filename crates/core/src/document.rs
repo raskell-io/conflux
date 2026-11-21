@@ -187,7 +187,7 @@ impl Document {
         );
 
         let result = if let Some(existing) = entity.fields.get(field) {
-            let merged = existing.merge(&incoming);
+            let merged = existing.merge(&incoming, field)?;
             let conflict_state = merged.conflict_state();
             entity.fields.insert(field.to_string(), merged);
 
@@ -356,7 +356,7 @@ impl Document {
         );
 
         let result = if let Some(existing) = entity.get_override(environment, field) {
-            let merged = existing.merge(&incoming);
+            let merged = existing.merge(&incoming, field)?;
             let conflict_state = merged.conflict_state();
             entity.set_override(environment, field, merged);
 
@@ -394,12 +394,13 @@ impl Document {
 
         if let Some(env) = environment {
             // Resolve override conflict
-            let existing = entity
-                .get_override(env, field)
-                .ok_or_else(|| OperationError::UnknownField {
-                    entity_type: entity.entity_type.clone(),
-                    field: field.to_string(),
-                })?;
+            let existing =
+                entity
+                    .get_override(env, field)
+                    .ok_or_else(|| OperationError::UnknownField {
+                        entity_type: entity.entity_type.clone(),
+                        field: field.to_string(),
+                    })?;
 
             // Only ReviewRegister can have conflicts
             if let FieldState::Review(reg) = existing {
@@ -450,8 +451,9 @@ impl Document {
 
             // Check base fields
             for (field_name, field_state) in &entity.fields {
-                if let crate::field::ConflictState::NeedsReview { ref contending_values } =
-                    field_state.conflict_state()
+                if let crate::field::ConflictState::NeedsReview {
+                    ref contending_values,
+                } = field_state.conflict_state()
                 {
                     conflicts.push(ConflictInfo {
                         entity_id: entity_id.clone(),
@@ -465,8 +467,9 @@ impl Document {
             // Check override fields
             for (env_name, env_fields) in &entity.overrides {
                 for (field_name, field_state) in env_fields {
-                    if let crate::field::ConflictState::NeedsReview { ref contending_values } =
-                        field_state.conflict_state()
+                    if let crate::field::ConflictState::NeedsReview {
+                        ref contending_values,
+                    } = field_state.conflict_state()
                     {
                         conflicts.push(ConflictInfo {
                             entity_id: entity_id.clone(),
@@ -509,7 +512,7 @@ impl Document {
                             actual: right_entity.entity_type.clone(),
                         });
                     }
-                    let (merged, conflicts) = left_entity.merge(right_entity);
+                    let (merged, conflicts) = left_entity.merge(right_entity)?;
                     all_conflicts.extend(conflicts);
                     entities.insert(id.clone(), merged);
                 }
@@ -949,7 +952,10 @@ mod tests {
         .unwrap();
 
         // Base field still returns 80
-        assert_eq!(doc.get_field(&entity_id, "weight"), Some(FieldValue::Int(80)));
+        assert_eq!(
+            doc.get_field(&entity_id, "weight"),
+            Some(FieldValue::Int(80))
+        );
 
         // Staging returns override
         assert_eq!(
@@ -984,7 +990,13 @@ mod tests {
         // Set base field
         let ts = clock.new_timestamp();
         doc.apply(
-            &Operation::set_field(entity_id.clone(), "weight", FieldValue::Int(100), &actor, ts),
+            &Operation::set_field(
+                entity_id.clone(),
+                "weight",
+                FieldValue::Int(100),
+                &actor,
+                ts,
+            ),
             &schema,
             &clock,
         )
@@ -1045,7 +1057,13 @@ mod tests {
         // Set base, staging, and development overrides
         let ts = clock.new_timestamp();
         doc.apply(
-            &Operation::set_field(entity_id.clone(), "weight", FieldValue::Int(100), &actor, ts),
+            &Operation::set_field(
+                entity_id.clone(),
+                "weight",
+                FieldValue::Int(100),
+                &actor,
+                ts,
+            ),
             &schema,
             &clock,
         )
@@ -1053,7 +1071,14 @@ mod tests {
 
         let ts = clock.new_timestamp();
         doc.apply(
-            &Operation::set_override(entity_id.clone(), "weight", "staging", FieldValue::Int(50), &actor, ts),
+            &Operation::set_override(
+                entity_id.clone(),
+                "weight",
+                "staging",
+                FieldValue::Int(50),
+                &actor,
+                ts,
+            ),
             &schema,
             &clock,
         )
@@ -1061,7 +1086,14 @@ mod tests {
 
         let ts = clock.new_timestamp();
         doc.apply(
-            &Operation::set_override(entity_id.clone(), "weight", "development", FieldValue::Int(10), &actor, ts),
+            &Operation::set_override(
+                entity_id.clone(),
+                "weight",
+                "development",
+                FieldValue::Int(10),
+                &actor,
+                ts,
+            ),
             &schema,
             &clock,
         )

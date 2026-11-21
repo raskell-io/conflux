@@ -3,7 +3,7 @@
 use crate::dto::OperationDto;
 use crate::error::ApiError;
 use conflux_core::ActorId;
-use conflux_rbac::{Action, AuthzContext, AuthzResult, Authorizer, RbacAuthorizer, Resource};
+use conflux_rbac::{Action, Authorizer, AuthzContext, AuthzResult, RbacAuthorizer, Resource};
 
 /// Converts an operation DTO to the corresponding RBAC action and resource.
 pub fn operation_to_authz(op: &OperationDto) -> (Action, Resource) {

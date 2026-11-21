@@ -87,12 +87,13 @@ impl PeerClient {
         our_role: ClusterRole,
         timestamp: &str,
     ) -> Result<(NodeId, ClusterRole), ReplicationError> {
-        let client = self.client.as_mut().ok_or_else(|| {
-            ReplicationError::ConnectionFailed {
+        let client = self
+            .client
+            .as_mut()
+            .ok_or_else(|| ReplicationError::ConnectionFailed {
                 peer: self.node_id.to_string(),
                 reason: "not connected".to_string(),
-            }
-        })?;
+            })?;
 
         let request = HeartbeatRequest {
             node_id: our_node_id.to_string(),
@@ -114,12 +115,13 @@ impl PeerClient {
         document_id: &str,
         source_node_id: &NodeId,
     ) -> Result<bool, ReplicationError> {
-        let client = self.client.as_mut().ok_or_else(|| {
-            ReplicationError::ConnectionFailed {
+        let client = self
+            .client
+            .as_mut()
+            .ok_or_else(|| ReplicationError::ConnectionFailed {
                 peer: self.node_id.to_string(),
                 reason: "not connected".to_string(),
-            }
-        })?;
+            })?;
 
         let op_json = serde_json::to_string(operation)?;
 
@@ -131,12 +133,12 @@ impl PeerClient {
 
         // Use a one-shot stream for now
         let (tx, rx) = mpsc::channel(1);
-        tx.send(request).await.map_err(|_| {
-            ReplicationError::ConnectionFailed {
+        tx.send(request)
+            .await
+            .map_err(|_| ReplicationError::ConnectionFailed {
                 peer: self.node_id.to_string(),
                 reason: "channel closed".to_string(),
-            }
-        })?;
+            })?;
         drop(tx);
 
         let stream = ReceiverStream::new(rx);
@@ -146,11 +148,7 @@ impl PeerClient {
         if let Some(result) = tokio_stream::StreamExt::next(&mut response_stream).await {
             let response = result?;
             if let Some(error) = response.error {
-                tracing::warn!(
-                    "Peer {} rejected operation: {}",
-                    self.node_id,
-                    error
-                );
+                tracing::warn!("Peer {} rejected operation: {}", self.node_id, error);
                 return Ok(false);
             }
             return Ok(response.acknowledged);
@@ -166,12 +164,13 @@ impl PeerClient {
         our_vv: &VersionVector,
         max_operations: u32,
     ) -> Result<(Vec<Operation>, VersionVector), ReplicationError> {
-        let client = self.client.as_mut().ok_or_else(|| {
-            ReplicationError::ConnectionFailed {
+        let client = self
+            .client
+            .as_mut()
+            .ok_or_else(|| ReplicationError::ConnectionFailed {
                 peer: self.node_id.to_string(),
                 reason: "not connected".to_string(),
-            }
-        })?;
+            })?;
 
         let vv_json = serde_json::to_string(our_vv)?;
 
@@ -202,12 +201,13 @@ impl PeerClient {
         &mut self,
         our_node_id: &NodeId,
     ) -> Result<crate::proto::GetClusterViewResponse, ReplicationError> {
-        let client = self.client.as_mut().ok_or_else(|| {
-            ReplicationError::ConnectionFailed {
+        let client = self
+            .client
+            .as_mut()
+            .ok_or_else(|| ReplicationError::ConnectionFailed {
                 peer: self.node_id.to_string(),
                 reason: "not connected".to_string(),
-            }
-        })?;
+            })?;
 
         let request = GetClusterViewRequest {
             node_id: our_node_id.to_string(),
@@ -359,7 +359,10 @@ impl PeerManager {
     }
 
     /// Gets a client for a specific peer.
-    pub fn get(&self, node_id: &NodeId) -> Option<dashmap::mapref::one::RefMut<'_, NodeId, PeerClient>> {
+    pub fn get(
+        &self,
+        node_id: &NodeId,
+    ) -> Option<dashmap::mapref::one::RefMut<'_, NodeId, PeerClient>> {
         self.clients.get_mut(node_id)
     }
 
@@ -454,11 +457,7 @@ impl ReconnectTask {
             let total = self.peer_manager.total_peers();
 
             if connected < total {
-                tracing::debug!(
-                    "Reconnect check: {}/{} peers connected",
-                    connected,
-                    total
-                );
+                tracing::debug!("Reconnect check: {}/{} peers connected", connected, total);
                 self.peer_manager.reconnect_disconnected().await;
             }
         }

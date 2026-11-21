@@ -492,7 +492,9 @@ mod tests {
         assert_eq!(serializer.extension(), "cust");
         assert_eq!(serializer.display_name(), "Custom Format");
 
-        let result = serializer.serialize(&serde_json::json!({"test": 42})).unwrap();
+        let result = serializer
+            .serialize(&serde_json::json!({"test": 42}))
+            .unwrap();
         assert!(result.starts_with("CUSTOM:"));
         assert!(result.contains("test"));
     }

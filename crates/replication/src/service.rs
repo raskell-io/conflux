@@ -107,11 +107,7 @@ impl ReplicationService for ReplicationServiceImpl {
 
                                 // Update clock with incoming timestamp
                                 if let Err(e) = clock.update_with_timestamp(&op.timestamp) {
-                                    tracing::warn!(
-                                        "Clock sync error from {}: {}",
-                                        source_node,
-                                        e
-                                    );
+                                    tracing::warn!("Clock sync error from {}: {}", source_node, e);
                                 }
 
                                 // Check if operation already exists (idempotent)
@@ -121,10 +117,7 @@ impl ReplicationService for ReplicationServiceImpl {
                                 };
 
                                 if already_exists {
-                                    tracing::debug!(
-                                        "Operation {} already exists, skipping",
-                                        op_id
-                                    );
+                                    tracing::debug!("Operation {} already exists, skipping", op_id);
                                     ReplicateResponse {
                                         acknowledged: true,
                                         operation_id: op_id,
@@ -288,10 +281,9 @@ impl ReplicationService for ReplicationServiceImpl {
         let peer_role = self.proto_to_role(req.role());
 
         // Parse peer's timestamp and update our clock
-        let peer_ts: conflux_core::HlcTimestamp = serde_json::from_value(
-            serde_json::Value::String(req.timestamp.clone()),
-        )
-        .map_err(|e| Status::invalid_argument(format!("invalid timestamp: {e}")))?;
+        let peer_ts: conflux_core::HlcTimestamp =
+            serde_json::from_value(serde_json::Value::String(req.timestamp.clone()))
+                .map_err(|e| Status::invalid_argument(format!("invalid timestamp: {e}")))?;
 
         if let Err(e) = self.clock.update_with_timestamp(&peer_ts) {
             tracing::warn!("Clock sync error from {}: {}", peer_node, e);

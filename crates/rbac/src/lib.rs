@@ -91,7 +91,9 @@ pub mod error;
 pub mod resolver;
 pub mod types;
 
-pub use authorizer::{AuthzContext, AuthzResult, Authorizer, ChainAuthorizer, DenialReason, RbacAuthorizer};
+pub use authorizer::{
+    Authorizer, AuthzContext, AuthzResult, ChainAuthorizer, DenialReason, RbacAuthorizer,
+};
 pub use config::RbacConfig;
 pub use error::RbacError;
 pub use resolver::RoleResolver;

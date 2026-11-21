@@ -72,6 +72,12 @@ pub struct SubmitOperationResponse {
     /// Conflict details if any.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub conflict_info: Option<ConflictInfoDto>,
+    /// Schema violations in the document state after the merge.
+    ///
+    /// The operation is still applied: rejecting merged state would break
+    /// convergence between replicas, so violations are reported instead.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub violations: Vec<String>,
 }
 
 /// Conflict information.
